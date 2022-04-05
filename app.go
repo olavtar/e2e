@@ -3,9 +3,10 @@ package main
 import (
 	"flag"
 	"fmt"
-	v12 "k8s.io/api/core/v1"
+	"gopkg.in/yaml.v2"
+	core "k8s.io/api/core/v1"
 	"k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -13,11 +14,17 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 )
+
+func test() {
+	secret := core.Secret{}
+	secretYaml, _ := yaml.Marshal(secret)
+	fmt.Println(string(secretYaml))
+}
 
 func main() {
 	fmt.Println("Running")
+	test()
 	var err error
 	var config *rest.Config
 	if os.Getenv("KUBERNETES_SERVICE_HOST") == "" {
@@ -44,7 +51,7 @@ func main() {
 	}
 
 	// Make sure the CRD exists
-	_, err = apiextensions.ApiextensionsV1().CustomResourceDefinitions().Get("dbaasplatforms.dbaas.redhat.com", v1.GetOptions{})
+	_, err = apiextensions.ApiextensionsV1().CustomResourceDefinitions().Get("dbaasplatforms.dbaas.redhat.com", meta.GetOptions{})
 
 	if err != nil {
 		fmt.Println("Error retrieving CRD", err)
@@ -57,7 +64,7 @@ func main() {
 	if err != nil {
 		panic(err.Error())
 	}
-	ciSecret, error := clientset.CoreV1().Secrets("osde2e-ci-secrets").Get("ci-secrets", v1.GetOptions{})
+	ciSecret, error := clientset.CoreV1().Secrets("osde2e-ci-secrets").Get("ci-secrets", meta.GetOptions{})
 	if error != nil {
 		fmt.Println("Error getting ciSecret", error)
 	} else {
@@ -69,32 +76,30 @@ func main() {
 			fmt.Println(providers)
 			for _, providerName := range providers {
 				fmt.Println(providerName)
-				var secretData = make(map[string]string)
+				var secretData = make(map[string][]byte)
 				for key, value := range ciSecret.Data {
 					if strings.HasPrefix(key, providerName) {
 						fmt.Printf("    %s: %s\n", key, value)
 						var keyName = strings.Split(key, "-")
 						fmt.Println(keyName[1])
 						//create map of secret data
-						secretData[keyName[1]] = string(value)
+						secretData[keyName[1]] = value
 					}
 				}
 				fmt.Println(secretData)
 				//create secret
-				secret := v12.Secret{
-					TypeMeta: v1.TypeMeta{
+				secret := core.Secret{
+					TypeMeta: meta.TypeMeta{
 						Kind:       "Secret",
 						APIVersion: "v1",
 					},
-					ObjectMeta: v1.ObjectMeta{
-						Name:      "dbaas-vendor-credentials-" + string(time.Now().UnixNano()),
+					ObjectMeta: meta.ObjectMeta{
+						Name:      "dbaas-vendor-credentials-testolga-" + providerName,
 						Namespace: "openshift-dbaas-operator",
 					},
-					Data: v1.{
-						secretData,
-					},
+					Data: secretData,
 				}
-				if _, err := clientset.CoreV1().Secrets("openshift-dbaas-operator").Create(secret); err != nil {
+				if _, err := clientset.CoreV1().Secrets("openshift-dbaas-operator").Create(&secret); err != nil {
 					fmt.Printf("Failed to create secret for : %v", err)
 				}
 			}
