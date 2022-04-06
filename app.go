@@ -4,9 +4,10 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	dbaasv1alpha1 "github.com/RHEcosystemAppEng/dbaas-operator/api/v1alpha1"
 	"gopkg.in/yaml.v2"
 	core "k8s.io/api/core/v1"
-	"k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+	apiserver "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -18,6 +19,8 @@ import (
 )
 
 func test() {
+	inventory := dbaasv1alpha1.DBaaSInventory{}
+	fmt.Println(inventory)
 	secret := core.Secret{}
 	secretYaml, _ := yaml.Marshal(secret)
 	fmt.Println(string(secretYaml))
@@ -46,7 +49,7 @@ func main() {
 		panic(err.Error())
 	}
 
-	apiextensions, err := clientset.NewForConfig(config)
+	apiextensions, err := apiserver.NewForConfig(config)
 	if err != nil {
 		panic(err.Error())
 	}
@@ -65,9 +68,9 @@ func main() {
 	if err != nil {
 		panic(err.Error())
 	}
-	ciSecret, error := clientset.CoreV1().Secrets("osde2e-ci-secrets").Get(context.TODO(), "ci-secrets", meta.GetOptions{})
-	if error != nil {
-		fmt.Println("Error getting ciSecret", error)
+	ciSecret, err := clientset.CoreV1().Secrets("osde2e-ci-secrets").Get(context.TODO(), "ci-secrets", meta.GetOptions{})
+	if err != nil {
+		fmt.Println("Error getting ciSecret", err)
 	} else {
 		fmt.Println("ciSecret Found: ")
 		//get the list of providers by getting providerList secret
@@ -96,7 +99,7 @@ func main() {
 						APIVersion: "v1",
 					},
 					ObjectMeta: meta.ObjectMeta{
-						Name:      "dbaas-vendor-credentials-testolga-" + providerName,
+						Name:      "dbaas-vendor-credentials-e2e-" + providerName,
 						Namespace: "openshift-dbaas-operator",
 					},
 					Data: secretData,
@@ -106,6 +109,29 @@ func main() {
 				}
 
 				//create inventory
+				inventory := dbaasv1alpha1.DBaaSInventory{
+					TypeMeta: meta.TypeMeta{
+						Kind:       "DBaaSInventory",
+						APIVersion: "dbaas.redhat.com/v1alpha1",
+					},
+					ObjectMeta: meta.ObjectMeta{
+						Name:      "providerAcct-test-" + providerName,
+						Namespace: "openshift-dbaas-operator",
+						Labels:    map[string]string{"related-to": "dbaas-operator", "type": "dbaas-vendor-service"},
+					},
+					Spec: dbaasv1alpha1.DBaaSOperatorInventorySpec{
+						Provider: dbaasv1alpha1.DatabaseProvider{
+							Name: string(secretData["providerType"]),
+						},
+						DBaaSInventorySpec: dbaasv1alpha1.DBaaSInventorySpec{
+							CredentialsRef: &dbaasv1alpha1.NamespacedName{
+								Namespace: "openshift-dbaas-operator",
+								Name:      "dbaas-vendor-credentials-e2e-" + providerName,
+							},
+						},
+					},
+				}
+				fmt.Println(inventory)
 
 				//	type Inventory struct {
 				//		Name string
