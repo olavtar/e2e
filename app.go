@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	dbaasv1alpha1 "github.com/RHEcosystemAppEng/dbaas-operator/api/v1alpha1"
-	"gopkg.in/yaml.v2"
 	core "k8s.io/api/core/v1"
 	apiserver "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -19,11 +18,12 @@ import (
 )
 
 func test() {
-	inventory := dbaasv1alpha1.DBaaSInventory{}
-	fmt.Println(inventory)
-	secret := core.Secret{}
-	secretYaml, _ := yaml.Marshal(secret)
-	fmt.Println(string(secretYaml))
+	fmt.Println("test running")
+	//inventory := dbaasv1alpha1.DBaaSInventory{}
+	//fmt.Println(inventory)
+	//secret := core.Secret{}
+	//secretYaml, _ := yaml.Marshal(secret)
+	//fmt.Println(string(secretYaml))
 }
 
 func main() {
@@ -63,6 +63,12 @@ func main() {
 		fmt.Println("CRD found")
 	}
 
+	//Testing the creation of secrets and provider accts per Provider
+	//1. We need to extract secrets from the vault in order to create a provider
+	//2. Create Secret
+	//3. Create Provider Acct
+	//4. Update Secret with Provider Acct info
+
 	//Get ci-secret's data
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
@@ -78,10 +84,11 @@ func main() {
 			fmt.Printf("providerListSecret = %s, ok = %v\n", providerListSecret, ok)
 			var providers = strings.Split(string(providerListSecret), ",")
 			fmt.Println(providers)
-			//loop through providers to create secrets and inventory
+			//loop through providers to create secrets and inventories
 			for _, providerName := range providers {
 				fmt.Println(providerName)
 				var secretData = make(map[string][]byte)
+				var nameSpace = "openshift-dbaas-operator"
 				for key, value := range ciSecret.Data {
 					if strings.HasPrefix(key, providerName) {
 						fmt.Printf("    %s: %s\n", key, value)
@@ -100,7 +107,7 @@ func main() {
 					},
 					ObjectMeta: meta.ObjectMeta{
 						Name:      "dbaas-vendor-credentials-e2e-" + providerName,
-						Namespace: "openshift-dbaas-operator",
+						Namespace: nameSpace,
 					},
 					Data: secretData,
 				}
@@ -116,7 +123,7 @@ func main() {
 					},
 					ObjectMeta: meta.ObjectMeta{
 						Name:      "providerAcct-test-" + providerName,
-						Namespace: "openshift-dbaas-operator",
+						Namespace: nameSpace,
 						Labels:    map[string]string{"related-to": "dbaas-operator", "type": "dbaas-vendor-service"},
 					},
 					Spec: dbaasv1alpha1.DBaaSOperatorInventorySpec{
@@ -125,44 +132,13 @@ func main() {
 						},
 						DBaaSInventorySpec: dbaasv1alpha1.DBaaSInventorySpec{
 							CredentialsRef: &dbaasv1alpha1.NamespacedName{
-								Namespace: "openshift-dbaas-operator",
-								Name:      "dbaas-vendor-credentials-e2e-" + providerName,
+								Namespace: nameSpace,
+								Name:      "e2e-provider-account" + providerName,
 							},
 						},
 					},
 				}
 				fmt.Println(inventory)
-
-				//	type Inventory struct {
-				//		Name string
-				//		Namespace  string
-				//	}
-				//
-				//	inventory :=  {
-				//		meta.TypeMeta{
-				//		APIVersion: "dbaas.redhat.com/v1alpha1",
-				//		Kind:       "DBaaSInventory",
-				//	},
-				//
-				//		ObjectMeta: meta.ObjectMeta{
-				//		Name:      inventoryName+providerName,
-				//		Namespace: "openshift-dbaas-operator",
-				//		labels: {
-				//			'related-to': 'dbaas-operator',
-				//			type: 'dbaas-vendor-service',
-				//		},
-				//	},
-				//spec: {
-				//providerRef: {
-				//name: selectedDBProvider?.metadata?.name,
-				//},
-				//credentialsRef: {
-				//name: secretName,
-				//	namespace: this.state.currentNS,
-				//},
-				//},
-				//}
-
 			}
 		} else {
 			fmt.Printf("providerListSecret not found\n")
@@ -180,28 +156,3 @@ func main() {
 		//}
 	}
 }
-
-//var _ = ginkgo.Describe("DBaaS Operator Tests", func() {
-//	defer ginkgo.GinkgoRecover()
-//	config, err := rest.InClusterConfig()
-//
-//	if err != nil {
-//		panic(err)
-//	}
-//
-//	ginkgo.It("dbaasplatforms.dbaas.redhat.com CRD exists", func() {
-//		apiextensions, err := clientset.NewForConfig(config)
-//		Expect(err).NotTo(HaveOccurred())
-//
-//		// Make sure the CRD exists
-//		_, err = apiextensions.ApiextensionsV1().CustomResourceDefinitions().Get("dbaasplatforms.dbaas.redhat.com", v1.GetOptions{})
-//
-//		if err != nil {
-//			metadata.Instance.FoundCRD = false
-//		} else {
-//			metadata.Instance.FoundCRD = true
-//		}
-//
-//		Expect(err).NotTo(HaveOccurred())
-//	})
-//})
