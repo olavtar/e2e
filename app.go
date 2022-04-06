@@ -69,11 +69,12 @@ func main() {
 		fmt.Println("Error getting ciSecret", error)
 	} else {
 		fmt.Println("ciSecret Found: ")
-		//get the list of providers
+		//get the list of providers by getting providerList secret
 		if providerListSecret, ok := ciSecret.Data["providerList"]; ok {
 			fmt.Printf("providerListSecret = %s, ok = %v\n", providerListSecret, ok)
 			var providers = strings.Split(string(providerListSecret), ",")
 			fmt.Println(providers)
+			//loop through providers to create secrets and inventory
 			for _, providerName := range providers {
 				fmt.Println(providerName)
 				var secretData = make(map[string][]byte)
@@ -102,6 +103,39 @@ func main() {
 				if _, err := clientset.CoreV1().Secrets("openshift-dbaas-operator").Create(&secret); err != nil {
 					fmt.Printf("Failed to create secret for : %v", err)
 				}
+
+				//create inventory
+
+				//	type Inventory struct {
+				//		Name string
+				//		Namespace  string
+				//	}
+				//
+				//	inventory :=  {
+				//		meta.TypeMeta{
+				//		APIVersion: "dbaas.redhat.com/v1alpha1",
+				//		Kind:       "DBaaSInventory",
+				//	},
+				//
+				//		ObjectMeta: meta.ObjectMeta{
+				//		Name:      inventoryName+providerName,
+				//		Namespace: "openshift-dbaas-operator",
+				//		labels: {
+				//			'related-to': 'dbaas-operator',
+				//			type: 'dbaas-vendor-service',
+				//		},
+				//	},
+				//spec: {
+				//providerRef: {
+				//name: selectedDBProvider?.metadata?.name,
+				//},
+				//credentialsRef: {
+				//name: secretName,
+				//	namespace: this.state.currentNS,
+				//},
+				//},
+				//}
+
 			}
 		} else {
 			fmt.Printf("providerListSecret not found\n")
