@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"gopkg.in/yaml.v2"
@@ -51,7 +52,7 @@ func main() {
 	}
 
 	// Make sure the CRD exists
-	_, err = apiextensions.ApiextensionsV1().CustomResourceDefinitions().Get("dbaasplatforms.dbaas.redhat.com", meta.GetOptions{})
+	_, err = apiextensions.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), "dbaasplatforms.dbaas.redhat.com", meta.GetOptions{})
 
 	if err != nil {
 		fmt.Println("Error retrieving CRD", err)
@@ -64,7 +65,7 @@ func main() {
 	if err != nil {
 		panic(err.Error())
 	}
-	ciSecret, error := clientset.CoreV1().Secrets("osde2e-ci-secrets").Get("ci-secrets", meta.GetOptions{})
+	ciSecret, error := clientset.CoreV1().Secrets("osde2e-ci-secrets").Get(context.TODO(), "ci-secrets", meta.GetOptions{})
 	if error != nil {
 		fmt.Println("Error getting ciSecret", error)
 	} else {
@@ -100,7 +101,7 @@ func main() {
 					},
 					Data: secretData,
 				}
-				if _, err := clientset.CoreV1().Secrets("openshift-dbaas-operator").Create(&secret); err != nil {
+				if _, err := clientset.CoreV1().Secrets("openshift-dbaas-operator").Create(context.TODO(), &secret, meta.CreateOptions{}); err != nil {
 					fmt.Printf("Failed to create secret for : %v", err)
 				}
 
