@@ -148,7 +148,7 @@ func main() {
 				}
 				logYaml(inventory)
 				if err = c.Create(context.Background(), &inventory); err != nil {
-					fmt.Printf("Failed to create invenotry for : %v\n", err)
+					fmt.Printf("Failed to create invenotry for : %v", err)
 				}
 
 			}
