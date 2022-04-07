@@ -141,12 +141,11 @@ func main() {
 						},
 					},
 				}
-				_ = c.Create(context.Background(), &inventory)
-
-				//if _, err := c.Create(context.Background(), &inventory); err != nil {
-				//	fmt.Printf("Failed to create secret for : %v", err)
-				//}
 				fmt.Println(inventory)
+				if err = c.Create(context.Background(), &inventory); err != nil {
+					fmt.Printf("Failed to create invenotry for : %v", err)
+				}
+
 			}
 		} else {
 			fmt.Printf("providerListSecret not found\n")

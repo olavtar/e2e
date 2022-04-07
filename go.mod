@@ -8,4 +8,5 @@ require (
 	k8s.io/apiextensions-apiserver v0.22.1
 	k8s.io/apimachinery v0.22.1
 	k8s.io/client-go v0.22.1
+	sigs.k8s.io/controller-runtime v0.10.0 // indirect
 )
