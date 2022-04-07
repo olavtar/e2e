@@ -14,6 +14,7 @@ import (
 	"k8s.io/client-go/util/homedir"
 	"os"
 	"path/filepath"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"strings"
 )
 
@@ -30,11 +31,12 @@ func main() {
 	fmt.Println("Running")
 	test()
 	var err error
+	var c client.Client
 	var config *rest.Config
 	if os.Getenv("KUBERNETES_SERVICE_HOST") == "" {
 		var kubeconfig *string
 		if home := homedir.HomeDir(); home != "" {
-			kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
+			kubeconfig = flag.String("kconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
 		} else {
 			kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
 		}
@@ -88,7 +90,7 @@ func main() {
 			for _, providerName := range providers {
 				fmt.Println(providerName)
 				var secretData = make(map[string][]byte)
-				var nameSpace = "openshift-dbaas-operator"
+				namespace := "openshift-dbaas-operator"
 				for key, value := range ciSecret.Data {
 					if strings.HasPrefix(key, providerName) {
 						fmt.Printf("    %s: %s\n", key, value)
@@ -107,7 +109,7 @@ func main() {
 					},
 					ObjectMeta: meta.ObjectMeta{
 						Name:      "dbaas-vendor-credentials-e2e-" + providerName,
-						Namespace: nameSpace,
+						Namespace: namespace,
 					},
 					Data: secretData,
 				}
@@ -122,22 +124,28 @@ func main() {
 						APIVersion: "dbaas.redhat.com/v1alpha1",
 					},
 					ObjectMeta: meta.ObjectMeta{
-						Name:      "providerAcct-test-" + providerName,
-						Namespace: nameSpace,
+						Name:      "providerAcct-test-e2e" + providerName,
+						Namespace: namespace,
 						Labels:    map[string]string{"related-to": "dbaas-operator", "type": "dbaas-vendor-service"},
 					},
 					Spec: dbaasv1alpha1.DBaaSOperatorInventorySpec{
-						Provider: dbaasv1alpha1.DatabaseProvider{
-							Name: string(secretData["providerType"]),
+						ProviderRef: dbaasv1alpha1.NamespacedName{
+							Namespace: namespace,
+							Name:      string(secretData["providerType"]),
 						},
 						DBaaSInventorySpec: dbaasv1alpha1.DBaaSInventorySpec{
 							CredentialsRef: &dbaasv1alpha1.NamespacedName{
-								Namespace: nameSpace,
-								Name:      "e2e-provider-account" + providerName,
+								Namespace: namespace,
+								Name:      "dbaas-vendor-credentials-e2e-" + providerName,
 							},
 						},
 					},
 				}
+				_ = c.Create(context.Background(), &inventory)
+
+				//if _, err := c.Create(context.Background(), &inventory); err != nil {
+				//	fmt.Printf("Failed to create secret for : %v", err)
+				//}
 				fmt.Println(inventory)
 			}
 		} else {
