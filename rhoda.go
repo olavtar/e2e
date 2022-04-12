@@ -79,20 +79,20 @@ func main() {
 	}
 	scheme := runtime.NewScheme()
 	if err := dbaasv1alpha1.AddToScheme(scheme); err != nil {
-		fmt.Printf("Failed to create schema.", err)
+		//	fmt.Printf("Failed to create schema.", err)
 	}
 	c, err := client.New(config, client.Options{Scheme: scheme})
 	ciSecret, err := clientset.CoreV1().Secrets("osde2e-ci-secrets").Get(context.TODO(), "ci-secrets", meta.GetOptions{})
 	if err != nil {
-		fmt.Println("Error getting ciSecret", err)
+		//	fmt.Println("Error getting ciSecret", err)
 	} else {
-		fmt.Println("ciSecret Found: ")
+		//	fmt.Println("ciSecret Found: ")
 		namespace := "openshift-dbaas-operator"
 		//get the list of providers by getting providerList secret
 		if providerListSecret, ok := ciSecret.Data["providerList"]; ok {
 			fmt.Printf("providerListSecret = %s, ok = %v\n", providerListSecret, ok)
 			var providers = strings.Split(string(providerListSecret), ",")
-			fmt.Println(providers)
+			//	fmt.Println(providers)
 			//loop through providers to create secrets and inventories
 			for _, providerName := range providers {
 				fmt.Println(providerName)
@@ -117,7 +117,7 @@ func main() {
 					},
 					Data: secretData,
 				}
-				logYaml(secret)
+				//	logYaml(secret)
 				if _, err = clientset.CoreV1().Secrets("openshift-dbaas-operator").Create(context.TODO(), &secret, meta.CreateOptions{}); err != nil {
 					fmt.Printf("Failed to create secret for : %v\n", err)
 				}
@@ -146,26 +146,26 @@ func main() {
 						},
 					},
 				}
-				logYaml(inventory)
+				//logYaml(inventory)
 				if err = c.Create(context.Background(), &inventory); err != nil {
 					fmt.Printf("Failed to create invenotry for : %v", err)
+				} else {
+					fmt.Println("check inventory status")
+					newInventory, err := c.Get(context.Background(), client.ObjectKey{
+						Namespace: namespace,
+						Name:      inventory.ObjectMeta.Name,
+					}, client.Object(inventory))
+					//if err != nil {
+					//	fmt.Println("Error getting inventories", err)
+					//} else {
+					//	fmt.Printf("Inventories = %s", newInventory)
+					//}
 				}
 
 			}
 		} else {
 			fmt.Printf("providerListSecret not found\n")
 		}
-
-		//for key, value := range ciSecret.Data {
-		//	fmt.Printf("    %s: %s\n", key, value)
-		//	if key == "providerList" {
-		//		fmt.Println("providerList: ", value)
-		//	}
-		//}
-		//for key, value := range ciSecret.Data {
-		//	// key is string, value is []byte
-		//	fmt.Printf("    %s: %s\n", key, value)
-		//}
 	}
 }
 
