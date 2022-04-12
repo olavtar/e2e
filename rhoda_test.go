@@ -2,6 +2,7 @@ package main_test
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	dbaasv1alpha1 "github.com/RHEcosystemAppEng/dbaas-operator/api/v1alpha1"
@@ -142,7 +143,12 @@ var _ = Describe("Rhoda e2e Test", func() {
 						if err != nil {
 							panic(err.Error())
 						}
-						fmt.Println(inventory)
+						fmt.Println("inventory")
+						b, err := json.MarshalIndent(inventory, "", "  ")
+						if err != nil {
+							fmt.Println("error:", err)
+						}
+						fmt.Print(string(b))
 
 					}
 				} else {
