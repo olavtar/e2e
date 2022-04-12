@@ -149,19 +149,7 @@ func main() {
 				//logYaml(inventory)
 				if err = c.Create(context.Background(), &inventory); err != nil {
 					fmt.Printf("Failed to create invenotry for : %v", err)
-				} else {
-					fmt.Println("check inventory status")
-					newInventory, err := c.Get(context.Background(), client.ObjectKey{
-						Namespace: namespace,
-						Name:      inventory.ObjectMeta.Name,
-					}, client.Object(inventory))
-					//if err != nil {
-					//	fmt.Println("Error getting inventories", err)
-					//} else {
-					//	fmt.Printf("Inventories = %s", newInventory)
-					//}
 				}
-
 			}
 		} else {
 			fmt.Printf("providerListSecret not found\n")
