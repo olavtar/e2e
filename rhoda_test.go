@@ -20,7 +20,6 @@ import (
 	"path/filepath"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"strings"
-	"time"
 )
 
 var _ = Describe("Rhoda e2e Test", func() {
@@ -132,10 +131,10 @@ var _ = Describe("Rhoda e2e Test", func() {
 						if err = c.Create(context.Background(), &inventory); err != nil {
 							fmt.Printf("Failed to create invenotry for : %v\n", err)
 						}
-						fmt.Println("Get Inventory")
-						fmt.Println(time.Now())
-						time.Sleep(5 * time.Second)
-						fmt.Println(time.Now())
+						//fmt.Println("Get Inventory")
+						//fmt.Println(time.Now())
+						//time.Sleep(5 * time.Second)
+						//fmt.Println(time.Now())
 						err := c.Get(context.TODO(), client.ObjectKey{
 							Namespace: namespace,
 							Name:      inventory.ObjectMeta.Name,
