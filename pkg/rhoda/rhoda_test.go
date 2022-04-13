@@ -101,8 +101,8 @@ var _ = Describe("Rhoda e2e Test", func() {
 					Data: secretData,
 				}
 				fmt.Println(secret)
-				//_, err = clientset.CoreV1().Secrets("openshift-dbaas-operator").Create(context.TODO(), &secret, meta.CreateOptions{})
-				//Expect(err).NotTo(HaveOccurred())
+				_, err = clientset.CoreV1().Secrets("openshift-dbaas-operator").Create(context.TODO(), &secret, meta.CreateOptions{})
+				Expect(err).NotTo(HaveOccurred())
 
 				//add to array
 				providers = append(providers, rhoda.ProviderAccount{ProviderName: providerName, SecretName: "dbaas-secret-e2e-" + providerName, SecretData: secretData})
@@ -111,43 +111,49 @@ var _ = Describe("Rhoda e2e Test", func() {
 
 		Context("Create Inventory", func() {
 			It("Create inventory using the map", func() {
+
+				scheme := runtime.NewScheme()
+				err := dbaasv1alpha1.AddToScheme(scheme)
+				Expect(err).NotTo(HaveOccurred())
+
+				c, err := client.New(config, client.Options{Scheme: scheme})
+				Expect(err).NotTo(HaveOccurred())
+
 				for _, value := range providers {
-					fmt.Println(value)
+					fmt.Println(value.ProviderName)
+					fmt.Println(value.SecretName)
+					for k, v := range value.SecretData {
+						//fmt.Println(k, "value is", v)
+						fmt.Printf("    %s: %s\n", k, v)
+					}
 
-					scheme := runtime.NewScheme()
-					err := dbaasv1alpha1.AddToScheme(scheme)
-					Expect(err).NotTo(HaveOccurred())
-
-					//c, err := client.New(config, client.Options{Scheme: scheme})
-					//Expect(err).NotTo(HaveOccurred())
-
-					////create inventory
-					//inventory := dbaasv1alpha1.DBaaSInventory{
-					//	TypeMeta: meta.TypeMeta{
-					//		Kind:       "DBaaSInventory",
-					//		APIVersion: "dbaas.redhat.com/v1alpha1",
-					//	},
-					//	ObjectMeta: meta.ObjectMeta{
-					//		Name:      "provider-acct-test-e2e-" + providerName,
-					//		Namespace: namespace,
-					//		Labels:    map[string]string{"related-to": "dbaas-operator", "type": "dbaas-vendor-service"},
-					//	},
-					//	Spec: dbaasv1alpha1.DBaaSOperatorInventorySpec{
-					//		ProviderRef: dbaasv1alpha1.NamespacedName{
-					//			Namespace: namespace,
-					//			Name:      string(secretData["providerType"]),
-					//		},
-					//		DBaaSInventorySpec: dbaasv1alpha1.DBaaSInventorySpec{
-					//			CredentialsRef: &dbaasv1alpha1.NamespacedName{
-					//				Namespace: namespace,
-					//				Name:      "dbaas-test-e2e-" + providerName,
-					//			},
-					//		},
-					//	},
-					//}
-					//if err = c.Create(context.Background(), &inventory); err != nil {
-					//	fmt.Printf("Failed to create invenotry for : %v\n", err)
-					//}
+					//create inventory
+					inventory := dbaasv1alpha1.DBaaSInventory{
+						TypeMeta: meta.TypeMeta{
+							Kind:       "DBaaSInventory",
+							APIVersion: "dbaas.redhat.com/v1alpha1",
+						},
+						ObjectMeta: meta.ObjectMeta{
+							Name:      "provider-acct-test-e2e-" + value.ProviderName,
+							Namespace: namespace,
+							Labels:    map[string]string{"related-to": "dbaas-operator", "type": "dbaas-vendor-service"},
+						},
+						Spec: dbaasv1alpha1.DBaaSOperatorInventorySpec{
+							ProviderRef: dbaasv1alpha1.NamespacedName{
+								Namespace: namespace,
+								Name:      string(value.SecretData["providerType"]),
+							},
+							DBaaSInventorySpec: dbaasv1alpha1.DBaaSInventorySpec{
+								CredentialsRef: &dbaasv1alpha1.NamespacedName{
+									Namespace: namespace,
+									Name:      "dbaas-secret-e2e-" + value.ProviderName,
+								},
+							},
+						},
+					}
+					if err = c.Create(context.Background(), &inventory); err != nil {
+						fmt.Printf("Failed to create invenotry for : %v\n", err)
+					}
 					fmt.Println("Get Inventory")
 				}
 				//inventoryData, err := json.MarshalIndent(inventory, "", "  ")
@@ -155,7 +161,7 @@ var _ = Describe("Rhoda e2e Test", func() {
 				//	fmt.Println("error:", err)
 				//}
 				//fmt.Print(string(inventoryData))
-				//	Eventually(isInventoryReady(c, inventory.ObjectMeta.Name, namespace), 30, 5).Should(BeTrue())
+				Eventually(isInventoryReady(c, inventory.ObjectMeta.Name, namespace), 30, 5).Should(BeTrue())
 			})
 		})
 	})
