@@ -1,4 +1,4 @@
-package main_test
+package rhoda_test
 
 import (
 	"testing"

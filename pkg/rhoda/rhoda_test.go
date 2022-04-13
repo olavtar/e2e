@@ -26,7 +26,6 @@ var _ = Describe("Rhoda e2e Test", func() {
 	var config *rest.Config
 	namespace := "openshift-dbaas-operator"
 	var providers []rhoda.ProviderAccount
-	var c client.Client
 
 	Context("Check operator installation", func() {
 		It("dbaasplatforms.dbaas.redhat.com CRD exists", func() {
@@ -58,8 +57,8 @@ var _ = Describe("Rhoda e2e Test", func() {
 		})
 	})
 
-	Context("extract secrets from the vault", func() {
-		It("Get list of providers", func() {
+	Context("Populate providers array", func() {
+		It("Get list of providers from the vault, create secrets, populate array", func() {
 			//Get ci-secret's data
 			clientset, err := kubernetes.NewForConfig(config)
 			Expect(err).NotTo(HaveOccurred())
@@ -76,7 +75,7 @@ var _ = Describe("Rhoda e2e Test", func() {
 				fmt.Println(providerNames)
 			}
 
-			//loop through providers to populate the providers map
+			//loop through providers to create secrets
 			for _, providerName := range providerNames {
 				fmt.Println(providerName)
 				var secretData = make(map[string][]byte)
@@ -96,69 +95,68 @@ var _ = Describe("Rhoda e2e Test", func() {
 						APIVersion: "v1",
 					},
 					ObjectMeta: meta.ObjectMeta{
-						Name:      "dbaas-test-e2e-" + providerName,
+						Name:      "dbaas-secret-e2e-" + providerName,
 						Namespace: namespace,
 					},
 					Data: secretData,
 				}
-				if _, err = clientset.CoreV1().Secrets("openshift-dbaas-operator").Create(context.TODO(), &secret, meta.CreateOptions{}); err != nil {
-					fmt.Printf("Failed to create secret for : %v\n", err)
+				fmt.Println(secret)
+				//_, err = clientset.CoreV1().Secrets("openshift-dbaas-operator").Create(context.TODO(), &secret, meta.CreateOptions{})
+				//Expect(err).NotTo(HaveOccurred())
+
+				//add to array
+				providers = append(providers, rhoda.ProviderAccount{ProviderName: providerName, SecretName: "dbaas-secret-e2e-" + providerName, SecretData: secretData})
+			}
+		})
+
+		Context("Create Inventory", func() {
+			It("Create inventory using the map", func() {
+				for _, value := range providers {
+					fmt.Println(value)
+
+					scheme := runtime.NewScheme()
+					err := dbaasv1alpha1.AddToScheme(scheme)
+					Expect(err).NotTo(HaveOccurred())
+
+					//c, err := client.New(config, client.Options{Scheme: scheme})
+					//Expect(err).NotTo(HaveOccurred())
+
+					////create inventory
+					//inventory := dbaasv1alpha1.DBaaSInventory{
+					//	TypeMeta: meta.TypeMeta{
+					//		Kind:       "DBaaSInventory",
+					//		APIVersion: "dbaas.redhat.com/v1alpha1",
+					//	},
+					//	ObjectMeta: meta.ObjectMeta{
+					//		Name:      "provider-acct-test-e2e-" + providerName,
+					//		Namespace: namespace,
+					//		Labels:    map[string]string{"related-to": "dbaas-operator", "type": "dbaas-vendor-service"},
+					//	},
+					//	Spec: dbaasv1alpha1.DBaaSOperatorInventorySpec{
+					//		ProviderRef: dbaasv1alpha1.NamespacedName{
+					//			Namespace: namespace,
+					//			Name:      string(secretData["providerType"]),
+					//		},
+					//		DBaaSInventorySpec: dbaasv1alpha1.DBaaSInventorySpec{
+					//			CredentialsRef: &dbaasv1alpha1.NamespacedName{
+					//				Namespace: namespace,
+					//				Name:      "dbaas-test-e2e-" + providerName,
+					//			},
+					//		},
+					//	},
+					//}
+					//if err = c.Create(context.Background(), &inventory); err != nil {
+					//	fmt.Printf("Failed to create invenotry for : %v\n", err)
+					//}
+					fmt.Println("Get Inventory")
 				}
-
-				append(providers, rhoda.ProviderAccount{providerName})
-
-				scheme := runtime.NewScheme()
-				err := dbaasv1alpha1.AddToScheme(scheme)
-				Expect(err).NotTo(HaveOccurred())
-
-				c, err := client.New(config, client.Options{Scheme: scheme})
-				Expect(err).NotTo(HaveOccurred())
-				//create inventory
-				inventory := dbaasv1alpha1.DBaaSInventory{
-					TypeMeta: meta.TypeMeta{
-						Kind:       "DBaaSInventory",
-						APIVersion: "dbaas.redhat.com/v1alpha1",
-					},
-					ObjectMeta: meta.ObjectMeta{
-						Name:      "provider-acct-test-e2e-" + providerName,
-						Namespace: namespace,
-						Labels:    map[string]string{"related-to": "dbaas-operator", "type": "dbaas-vendor-service"},
-					},
-					Spec: dbaasv1alpha1.DBaaSOperatorInventorySpec{
-						ProviderRef: dbaasv1alpha1.NamespacedName{
-							Namespace: namespace,
-							Name:      string(secretData["providerType"]),
-						},
-						DBaaSInventorySpec: dbaasv1alpha1.DBaaSInventorySpec{
-							CredentialsRef: &dbaasv1alpha1.NamespacedName{
-								Namespace: namespace,
-								Name:      "dbaas-test-e2e-" + providerName,
-							},
-						},
-					},
-				}
-				if err = c.Create(context.Background(), &inventory); err != nil {
-					fmt.Printf("Failed to create invenotry for : %v\n", err)
-				}
-
-				fmt.Println("Get Inventory")
-				//err := c.Get(context.TODO(), client.ObjectKey{
-				//	Namespace: namespace,
-				//	Name:      inventory.ObjectMeta.Name,
-				//}, &inventory)
-				//
-				//if err != nil {
-				//	panic(err.Error())
-				//}
-				//fmt.Println("inventory")
 				//inventoryData, err := json.MarshalIndent(inventory, "", "  ")
 				//if err != nil {
 				//	fmt.Println("error:", err)
 				//}
 				//fmt.Print(string(inventoryData))
-				Eventually(isInventoryReady(c, inventory.ObjectMeta.Name, namespace), 30, 5).Should(BeTrue())
-
-			}
+				//	Eventually(isInventoryReady(c, inventory.ObjectMeta.Name, namespace), 30, 5).Should(BeTrue())
+			})
 		})
 	})
 })

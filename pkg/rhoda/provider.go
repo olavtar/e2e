@@ -1,7 +1,7 @@
 package rhoda
 
 type ProviderAccount struct {
-	providerName string
-	secretName   string
-	secretData   map[string][]byte
+	ProviderName string
+	SecretName   string
+	SecretData   map[string][]byte
 }
