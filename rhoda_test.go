@@ -23,6 +23,10 @@ import (
 
 var _ = Describe("Rhoda e2e Test", func() {
 	var config *rest.Config
+	namespace := "openshift-dbaas-operator"
+	var providers []providerAccount
+	var c client.Client
+
 	Context("Check operator installation", func() {
 		It("dbaasplatforms.dbaas.redhat.com CRD exists", func() {
 			//running it locally, assuming we are outside the cluster
@@ -54,27 +58,24 @@ var _ = Describe("Rhoda e2e Test", func() {
 	})
 
 	Context("extract secrets from the vault", func() {
-		It("Get ci-secrets", func() {
+		It("Get list of providers", func() {
 			//Get ci-secret's data
 			clientset, err := kubernetes.NewForConfig(config)
 			Expect(err).NotTo(HaveOccurred())
 
-			scheme := runtime.NewScheme()
-			if err := dbaasv1alpha1.AddToScheme(scheme); err != nil {
-				//fmt.Printf("Failed to create schema.", err)
-			}
-			c, err := client.New(config, client.Options{Scheme: scheme})
 			ciSecret, err := clientset.CoreV1().Secrets("osde2e-ci-secrets").Get(context.TODO(), "ci-secrets", meta.GetOptions{})
-			if err != nil {
-				fmt.Println("Error getting ciSecret", err)
-			} else {
-				fmt.Println("ciSecret Found: ")
-				namespace := "openshift-dbaas-operator"
-				//get the list of providers by getting providerList secret
-				if providerListSecret, ok := ciSecret.Data["providerList"]; ok {
-					fmt.Printf("providerListSecret = %s, ok = %v\n", providerListSecret, ok)
-					var providers = strings.Split(string(providerListSecret), ",")
-					fmt.Println(providers)
+			Expect(err).NotTo(HaveOccurred())
+
+			fmt.Println("ciSecret Found: ")
+			//get the list of providers by getting providerList secret
+			if providerListSecret, ok := ciSecret.Data["providerList"]; ok {
+				fmt.Printf("providerListSecret = %s, ok = %v\n", providerListSecret, ok)
+				providers = strings.Split(string(providerListSecret), ",")
+				fmt.Println(providers)
+			}
+
+				})
+				It("Get list of providers", func() {
 					//loop through providers to create secrets and inventories
 					for _, providerName := range providers {
 						fmt.Println(providerName)
@@ -94,7 +95,7 @@ var _ = Describe("Rhoda e2e Test", func() {
 								APIVersion: "v1",
 							},
 							ObjectMeta: meta.ObjectMeta{
-								Name:      "dbaas-vendor-credentials-e2e-" + providerName,
+								Name:      "dbaas-test-e2e-" + providerName,
 								Namespace: namespace,
 							},
 							Data: secretData,
@@ -102,7 +103,12 @@ var _ = Describe("Rhoda e2e Test", func() {
 						if _, err = clientset.CoreV1().Secrets("openshift-dbaas-operator").Create(context.TODO(), &secret, meta.CreateOptions{}); err != nil {
 							fmt.Printf("Failed to create secret for : %v\n", err)
 						}
+						scheme := runtime.NewScheme()
+						err := dbaasv1alpha1.AddToScheme(scheme)
+						Expect(err).NotTo(HaveOccurred())
 
+						c, err := client.New(config, client.Options{Scheme: scheme})
+						Expect(err).NotTo(HaveOccurred())
 						//create inventory
 						inventory := dbaasv1alpha1.DBaaSInventory{
 							TypeMeta: meta.TypeMeta{
@@ -122,7 +128,7 @@ var _ = Describe("Rhoda e2e Test", func() {
 								DBaaSInventorySpec: dbaasv1alpha1.DBaaSInventorySpec{
 									CredentialsRef: &dbaasv1alpha1.NamespacedName{
 										Namespace: namespace,
-										Name:      "dbaas-vendor-credentials-e2e-" + providerName,
+										Name:      "dbaas-test-e2e-" + providerName,
 									},
 								},
 							},
