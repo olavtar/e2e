@@ -2,7 +2,6 @@ package main_test
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	dbaasv1alpha1 "github.com/RHEcosystemAppEng/dbaas-operator/api/v1alpha1"
@@ -131,23 +130,23 @@ var _ = Describe("Rhoda e2e Test", func() {
 						if err = c.Create(context.Background(), &inventory); err != nil {
 							fmt.Printf("Failed to create invenotry for : %v\n", err)
 						}
-						//fmt.Println("Get Inventory")
-						//fmt.Println(time.Now())
-						//time.Sleep(5 * time.Second)
-						//fmt.Println(time.Now())
-						err := c.Get(context.TODO(), client.ObjectKey{
-							Namespace: namespace,
-							Name:      inventory.ObjectMeta.Name,
-						}, &inventory)
-						if err != nil {
-							panic(err.Error())
-						}
-						fmt.Println("inventory")
-						b, err := json.MarshalIndent(inventory, "", "  ")
-						if err != nil {
-							fmt.Println("error:", err)
-						}
-						fmt.Print(string(b))
+
+						fmt.Println("Get Inventory")
+						//err := c.Get(context.TODO(), client.ObjectKey{
+						//	Namespace: namespace,
+						//	Name:      inventory.ObjectMeta.Name,
+						//}, &inventory)
+						//
+						//if err != nil {
+						//	panic(err.Error())
+						//}
+						//fmt.Println("inventory")
+						//inventoryData, err := json.MarshalIndent(inventory, "", "  ")
+						//if err != nil {
+						//	fmt.Println("error:", err)
+						//}
+						//fmt.Print(string(inventoryData))
+						Eventually(isInventoryReady(c, inventory.ObjectMeta.Name, namespace), 30, 5).Should(BeTrue())
 
 					}
 				} else {
@@ -157,3 +156,23 @@ var _ = Describe("Rhoda e2e Test", func() {
 		})
 	})
 })
+
+func isInventoryReady(client2 client.Client, inventoryName string, namespace string) bool {
+	fmt.Println("FetchInventory")
+	statusReady := false
+	inventory := dbaasv1alpha1.DBaaSInventory{}
+	err := client2.Get(context.TODO(), client.ObjectKey{
+		Namespace: namespace,
+		Name:      inventoryName,
+	}, &inventory)
+
+	if err != nil {
+		panic(err.Error())
+	}
+	if inventory.Status.Conditions[0].Status == "True" && inventory.Status.Conditions[1].Status == "True" {
+		statusReady = true
+	} else {
+		statusReady = false
+	}
+	return statusReady
+}
