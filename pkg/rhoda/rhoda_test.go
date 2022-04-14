@@ -102,7 +102,6 @@ var _ = Describe("Rhoda e2e Test", func() {
 					},
 					Data: secretData,
 				}
-				fmt.Println(secret)
 				_, err = clientset.CoreV1().Secrets("openshift-dbaas-operator").Create(context.TODO(), &secret, meta.CreateOptions{})
 				Expect(err).NotTo(HaveOccurred())
 
@@ -114,7 +113,7 @@ var _ = Describe("Rhoda e2e Test", func() {
 
 	Context("Create Inventory", func() {
 		It("Create inventory using the map", func() {
-
+			fmt.Println("Creating inventory")
 			scheme := runtime.NewScheme()
 			err := dbaasv1alpha1.AddToScheme(scheme)
 			Expect(err).NotTo(HaveOccurred())
@@ -125,10 +124,9 @@ var _ = Describe("Rhoda e2e Test", func() {
 			for _, value := range providers {
 				fmt.Println(value.ProviderName)
 				fmt.Println(value.SecretName)
-				for k, v := range value.SecretData {
-					//fmt.Println(k, "value is", v)
-					fmt.Printf("    %s: %s\n", k, v)
-				}
+				//for k, v := range value.SecretData {
+				//	fmt.Printf("    %s: %s\n", k, v)
+				//}
 
 				//create inventory
 				inventory := dbaasv1alpha1.DBaaSInventory{
@@ -154,24 +152,22 @@ var _ = Describe("Rhoda e2e Test", func() {
 						},
 					},
 				}
-				if err = c.Create(context.Background(), &inventory); err != nil {
-					fmt.Printf("Failed to create invenotry for : %v\n", err)
-				}
-				fmt.Println("Get Inventory")
+				err = c.Create(context.Background(), &inventory)
+				Expect(err).NotTo(HaveOccurred())
 			}
 		})
 	})
 	Context("Check inventories status", func() {
-		It("Should pass when the inventory eventually is processed", func() {
+		It("Should pass when the inventory is processed", func() {
 			for _, value := range providers {
 				inventory := dbaasv1alpha1.DBaaSInventory{}
-				err := c.Get(context.TODO(), client.ObjectKey{
-					Namespace: namespace,
-					Name:      "provider-acct-test-e2e-" + value.ProviderName,
-				}, &inventory)
-				Expect(err).NotTo(HaveOccurred())
-
 				Eventually(func() bool {
+					fmt.Println("Checking inventory status for: " + value.ProviderName)
+					err := c.Get(context.TODO(), client.ObjectKey{
+						Namespace: namespace,
+						Name:      "provider-acct-test-e2e-" + value.ProviderName,
+					}, &inventory)
+					Expect(err).NotTo(HaveOccurred())
 					return inventory.Status.Conditions[0].Status == "True"
 				}, 60*time.Second, 5*time.Second).Should(BeTrue())
 			}
