@@ -115,7 +115,7 @@ var _ = Describe("Rhoda e2e Test", func() {
 		}
 	})
 
-	Describe("Create Inventory", func() {
+	Context("Create Inventory", func() {
 		scheme := runtime.NewScheme()
 		err := dbaasv1alpha1.AddToScheme(scheme)
 		Expect(err).NotTo(HaveOccurred())
