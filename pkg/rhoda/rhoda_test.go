@@ -29,33 +29,16 @@ var _ = Describe("Rhoda e2e Test", Ordered, func() {
 	var providers []rhoda.ProviderAccount
 	var c client.Client
 
-	BeforeAll(func() {
-		config = getConfig()
-	})
+	//BeforeAll(func() {
+	//	fmt.Println("Runnig BeforeAll")
+	//	config = getConfig()
+	//	Expect(config).NotTo(BeNil())
+	//})
 
 	Context("Check operator installation", func() {
 		fmt.Println("Running 1st Context")
-		//	It("dbaasplatforms.dbaas.redhat.com CRD exists", func() {
+		config = getConfig()
 
-		//running it locally, assuming we are outside the cluster
-		//var err error
-		//if os.Getenv("KUBERNETES_SERVICE_HOST") == "" {
-		//	var kubeconfig *string
-		//	if home := homedir.HomeDir(); home != "" {
-		//		kubeconfig = flag.String("kconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
-		//	} else {
-		//		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
-		//	}
-		//	flag.Parse()
-		//
-		//	// use the current context in kubeconfig
-		//	config, err = clientcmd.BuildConfigFromFlags("", *kubeconfig)
-		//} else {
-		//	config, err = rest.InClusterConfig()
-		//}
-		//Expect(err).NotTo(HaveOccurred())
-		fmt.Println("config:")
-		fmt.Println(config)
 		apiextensions, err := apiserver.NewForConfig(config)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -66,11 +49,7 @@ var _ = Describe("Rhoda e2e Test", Ordered, func() {
 	})
 
 	Context("Populate providers array, create secret", func() {
-		//It("Get list of providers from the vault, create secrets, populate array", func() {
-		//When("Getting the providers list from the ci-secrets", func() {
 		//Get ci-secret's data
-		fmt.Println("Config2: ")
-		fmt.Println(config)
 		clientset, err := kubernetes.NewForConfig(config)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -123,6 +102,7 @@ var _ = Describe("Rhoda e2e Test", Ordered, func() {
 	})
 
 	Context("Create Inventory", func() {
+
 		scheme := runtime.NewScheme()
 		err := dbaasv1alpha1.AddToScheme(scheme)
 		Expect(err).NotTo(HaveOccurred())
