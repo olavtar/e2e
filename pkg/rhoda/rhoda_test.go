@@ -23,47 +23,54 @@ import (
 	"time"
 )
 
-var _ = Describe("Rhoda e2e Test", func() {
+var _ = Describe("Rhoda e2e Test", Ordered, func() {
 	var config *rest.Config
 	namespace := "openshift-dbaas-operator"
 	var providers []rhoda.ProviderAccount
 	var c client.Client
 
+	BeforeAll(func() {
+		config = getConfig()
+	})
+
 	Context("Check operator installation", func() {
-		It("dbaasplatforms.dbaas.redhat.com CRD exists", func() {
-			//running it locally, assuming we are outside the cluster
-			var err error
-			if os.Getenv("KUBERNETES_SERVICE_HOST") == "" {
-				var kubeconfig *string
-				if home := homedir.HomeDir(); home != "" {
-					kubeconfig = flag.String("kconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
-				} else {
-					kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
-				}
-				flag.Parse()
+		fmt.Println("Running 1st Context")
+		//	It("dbaasplatforms.dbaas.redhat.com CRD exists", func() {
 
-				// use the current context in kubeconfig
-				config, err = clientcmd.BuildConfigFromFlags("", *kubeconfig)
-			} else {
-				config, err = rest.InClusterConfig()
-			}
-			Expect(err).NotTo(HaveOccurred())
+		//running it locally, assuming we are outside the cluster
+		//var err error
+		//if os.Getenv("KUBERNETES_SERVICE_HOST") == "" {
+		//	var kubeconfig *string
+		//	if home := homedir.HomeDir(); home != "" {
+		//		kubeconfig = flag.String("kconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
+		//	} else {
+		//		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
+		//	}
+		//	flag.Parse()
+		//
+		//	// use the current context in kubeconfig
+		//	config, err = clientcmd.BuildConfigFromFlags("", *kubeconfig)
+		//} else {
+		//	config, err = rest.InClusterConfig()
+		//}
+		//Expect(err).NotTo(HaveOccurred())
+		fmt.Println("config:")
+		fmt.Println(config)
+		apiextensions, err := apiserver.NewForConfig(config)
+		Expect(err).NotTo(HaveOccurred())
 
-			apiextensions, err := apiserver.NewForConfig(config)
-			Expect(err).NotTo(HaveOccurred())
-
-			// Make sure the CRD exists
-			_, err = apiextensions.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), "dbaasplatforms.dbaas.redhat.com", meta.GetOptions{})
-
-			Expect(err).NotTo(HaveOccurred())
-		})
+		// Make sure the CRD exists
+		_, err = apiextensions.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), "dbaasplatforms.dbaas.redhat.com", meta.GetOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		//})
 	})
 
 	Context("Populate providers array, create secret", func() {
 		//It("Get list of providers from the vault, create secrets, populate array", func() {
 		//When("Getting the providers list from the ci-secrets", func() {
 		//Get ci-secret's data
-
+		fmt.Println("Config2: ")
+		fmt.Println(config)
 		clientset, err := kubernetes.NewForConfig(config)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -179,3 +186,27 @@ var _ = Describe("Rhoda e2e Test", func() {
 		})
 	})
 })
+
+func getConfig() *rest.Config {
+	fmt.Println("Running getConfig")
+	var config *rest.Config
+	var err error
+	if os.Getenv("KUBERNETES_SERVICE_HOST") == "" {
+		var kubeconfig *string
+		if home := homedir.HomeDir(); home != "" {
+			kubeconfig = flag.String("kconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
+		} else {
+			kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
+		}
+		flag.Parse()
+
+		// use the current context in kubeconfig
+		config, err = clientcmd.BuildConfigFromFlags("", *kubeconfig)
+	} else {
+		config, err = rest.InClusterConfig()
+	}
+	if err != nil {
+		panic(err.Error())
+	}
+	return config
+}
