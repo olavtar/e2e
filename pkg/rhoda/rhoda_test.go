@@ -23,7 +23,7 @@ import (
 	"time"
 )
 
-var _ = Describe("Rhoda e2e Test", Ordered, func() {
+var _ = Describe("Rhoda e2e Test", func() {
 	var config *rest.Config
 	namespace := "openshift-dbaas-operator"
 	var providers []rhoda.ProviderAccount
@@ -81,7 +81,8 @@ var _ = Describe("Rhoda e2e Test", Ordered, func() {
 				}
 
 				//create secret
-				secret := core.Secret{
+				secret := core.Secret{}
+				secret = core.Secret{
 					TypeMeta: meta.TypeMeta{
 						Kind:       "Secret",
 						APIVersion: "v1",
@@ -92,6 +93,8 @@ var _ = Describe("Rhoda e2e Test", Ordered, func() {
 					},
 					Data: secretData,
 				}
+				fmt.Println("Secret before creation")
+				fmt.Println(secret.ObjectMeta.Name)
 				_, err = clientset.CoreV1().Secrets("openshift-dbaas-operator").Create(context.TODO(), &secret, meta.CreateOptions{})
 				Expect(err).NotTo(HaveOccurred())
 
