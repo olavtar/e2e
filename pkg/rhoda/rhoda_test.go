@@ -120,15 +120,13 @@ var _ = Describe("Rhoda e2e Test", func() {
 	})
 
 	Describe("Create Inventory", func() {
-		BeforeSuite(func() {
+		scheme := runtime.NewScheme()
+		err := dbaasv1alpha1.AddToScheme(scheme)
+		Expect(err).NotTo(HaveOccurred())
 
-			scheme := runtime.NewScheme()
-			err := dbaasv1alpha1.AddToScheme(scheme)
-			Expect(err).NotTo(HaveOccurred())
+		c, err = client.New(config, client.Options{Scheme: scheme})
+		Expect(err).NotTo(HaveOccurred())
 
-			c, err = client.New(config, client.Options{Scheme: scheme})
-			Expect(err).NotTo(HaveOccurred())
-		})
 		for _, value := range providers {
 			When("something nested inventory "+value.ProviderName, func() {
 				It("Creating inventory", func() {
