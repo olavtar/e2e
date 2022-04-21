@@ -23,7 +23,7 @@ import (
 	"time"
 )
 
-var _ = Describe("Rhoda e2e Test", Ordered, func() {
+var _ = Describe("Rhoda e2e Test", func() {
 	var config *rest.Config
 	namespace := "openshift-dbaas-operator"
 	var providers []rhoda.ProviderAccount
@@ -31,7 +31,6 @@ var _ = Describe("Rhoda e2e Test", Ordered, func() {
 	var providerNames []string
 	var clientset *kubernetes.Clientset
 	var err error
-	var ciSecret
 
 	//BeforeAll(func() {
 	//	fmt.Println("Runnig BeforeAll")
@@ -57,7 +56,7 @@ var _ = Describe("Rhoda e2e Test", Ordered, func() {
 		clientset, err = kubernetes.NewForConfig(config)
 		Expect(err).NotTo(HaveOccurred())
 
-		ciSecret, err = clientset.CoreV1().Secrets("osde2e-ci-secrets").Get(context.TODO(), "ci-secrets", meta.GetOptions{})
+		ciSecret, err := clientset.CoreV1().Secrets("osde2e-ci-secrets").Get(context.TODO(), "ci-secrets", meta.GetOptions{})
 		Expect(err).NotTo(HaveOccurred())
 
 		fmt.Println("ciSecret Found: ")
@@ -67,25 +66,35 @@ var _ = Describe("Rhoda e2e Test", Ordered, func() {
 			providerNames = strings.Split(string(providerListSecret), ",")
 			fmt.Println(providerNames)
 		}
+		for _, providerName := range providerNames {
+			fmt.Println(providerName)
+			var secretData = make(map[string][]byte)
+			for key, value := range ciSecret.Data {
+				if strings.HasPrefix(key, providerName) {
+					fmt.Printf("    %s: %s\n", key, value)
+					var keyName = strings.Split(key, "-")
+					//create map of secret data
+					secretData[keyName[1]] = value
+				}
+			}
+			//add to array
+			providers = append(providers, rhoda.ProviderAccount{ProviderName: providerName, SecretName: "dbaas-secret-e2e-" + providerName, SecretData: secretData})
+		}
 	})
 
 	Describe("Loop through providers to create Secrets and Inventory", func() {
-		//loop through providers to create secrets
-		for i := range providerNames {
-			providerName := providerNames[i]
-			Context("Should pass when SecretData and secret are created for "+providerName, func() {
-				fmt.Println("Creating secret")
-				fmt.Println(providerName)
-				var secretData = make(map[string][]byte)
-				for key, value := range ciSecret.Data {
-					if strings.HasPrefix(key, providerName) {
-						fmt.Printf("    %s: %s\n", key, value)
-						var keyName = strings.Split(key, "-")
-						//create map of secret data
-						secretData[keyName[1]] = value
-					}
-				}
+		//add dbaas scheme
+		scheme := runtime.NewScheme()
+		err := dbaasv1alpha1.AddToScheme(scheme)
+		Expect(err).NotTo(HaveOccurred())
 
+		c, err = client.New(config, client.Options{Scheme: scheme})
+		Expect(err).NotTo(HaveOccurred())
+
+		for i := range providers {
+			value := providers[i]
+			Context("Should pass when secret and inventory are created for "+value.ProviderName, func() {
+				fmt.Println("Creating secret for : " + value.ProviderName)
 				//create secret
 				secret := core.Secret{
 					TypeMeta: meta.TypeMeta{
@@ -93,33 +102,16 @@ var _ = Describe("Rhoda e2e Test", Ordered, func() {
 						APIVersion: "v1",
 					},
 					ObjectMeta: meta.ObjectMeta{
-						Name:      "dbaas-secret-e2e-" + providerName,
+						Name:      value.SecretName,
 						Namespace: namespace,
 					},
-					Data: secretData,
+					Data: value.SecretData,
 				}
 				_, err = clientset.CoreV1().Secrets("openshift-dbaas-operator").Create(context.TODO(), &secret, meta.CreateOptions{})
 				Expect(err).NotTo(HaveOccurred())
 
-				//add to array
-				providers = append(providers, rhoda.ProviderAccount{ProviderName: providerName, SecretName: "dbaas-secret-e2e-" + providerName, SecretData: secretData})
-
-				fmt.Println("Create Inventory")
-				scheme := runtime.NewScheme()
-				err := dbaasv1alpha1.AddToScheme(scheme)
-				Expect(err).NotTo(HaveOccurred())
-
-				c, err = client.New(config, client.Options{Scheme: scheme})
-				Expect(err).NotTo(HaveOccurred())
-
-				fmt.Println("Creating inventory")
-				fmt.Println(value.ProviderName)
-				fmt.Println(value.SecretName)
-				//for k, v := range value.SecretData {
-				//	fmt.Printf("    %s: %s\n", k, v)
-				//}
-
 				//create inventory
+				fmt.Println("Creating inventory for : " + value.ProviderName)
 				inventory := dbaasv1alpha1.DBaaSInventory{
 					TypeMeta: meta.TypeMeta{
 						Kind:       "DBaaSInventory",
@@ -145,17 +137,10 @@ var _ = Describe("Rhoda e2e Test", Ordered, func() {
 				}
 				err = c.Create(context.Background(), &inventory)
 				Expect(err).NotTo(HaveOccurred())
-			})
-		}
-	})
 
-	Context("Check inventories status", func() {
-		It("Should pass when the inventory is processed", func() {
-			for _, value := range providers {
-				fmt.Println("Checking inventory status for: " + value.ProviderName)
-				inventory := dbaasv1alpha1.DBaaSInventory{}
+				//Check inventories status
 				Eventually(func() bool {
-					fmt.Println("Eventually block for : " + value.ProviderName)
+					fmt.Println("Checking inventory status for : " + value.ProviderName)
 					err := c.Get(context.TODO(), client.ObjectKey{
 						Namespace: namespace,
 						Name:      "provider-acct-test-e2e-" + value.ProviderName,
@@ -163,8 +148,8 @@ var _ = Describe("Rhoda e2e Test", Ordered, func() {
 					Expect(err).NotTo(HaveOccurred())
 					return inventory.Status.Conditions[0].Status == "True"
 				}, 60*time.Second, 5*time.Second).Should(BeTrue())
-			}
-		})
+			})
+		}
 	})
 })
 
