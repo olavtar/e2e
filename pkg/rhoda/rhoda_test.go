@@ -145,7 +145,7 @@ var _ = Describe("Rhoda e2e Test", func() {
 				//Check inventories status
 				inventory := dbaasv1alpha1.DBaaSInventory{}
 				Eventually(func() bool {
-					fmt.Println("Checking inventory status for : " + value.ProviderName)
+					fmt.Println("Eventually status for : " + value.ProviderName)
 					err := c.Get(context.TODO(), client.ObjectKey{
 						Namespace: namespace,
 						Name:      "provider-acct-test-e2e-" + value.ProviderName,
