@@ -82,7 +82,7 @@ var _ = Describe("Rhoda e2e Test", func() {
 		}
 	})
 
-	Describe("Loop through providers to create Secrets and Inventory", func() {
+	Context("Loop through providers to create Secrets and Inventory", func() {
 		//add dbaas scheme
 		scheme := runtime.NewScheme()
 		err := dbaasv1alpha1.AddToScheme(scheme)
@@ -93,7 +93,8 @@ var _ = Describe("Rhoda e2e Test", func() {
 
 		for i := range providers {
 			value := providers[i]
-			Context("Should pass when secret and inventory are created for "+value.ProviderName, func() {
+			//	Context("Should pass when secret and inventory are created for "+value.ProviderName, func() {
+			It("Should pass when secret is created for "+value.ProviderName, func() {
 				fmt.Println("Creating secret for : " + value.ProviderName)
 				//create secret
 				secret := core.Secret{
@@ -109,8 +110,9 @@ var _ = Describe("Rhoda e2e Test", func() {
 				}
 				_, err = clientset.CoreV1().Secrets("openshift-dbaas-operator").Create(context.TODO(), &secret, meta.CreateOptions{})
 				Expect(err).NotTo(HaveOccurred())
-
-				//create inventory
+			})
+			//create inventory
+			It("Should pass when inventory is created for "+value.ProviderName, func() {
 				fmt.Println("Creating inventory for : " + value.ProviderName)
 				inventory := dbaasv1alpha1.DBaaSInventory{
 					TypeMeta: meta.TypeMeta{
@@ -137,8 +139,11 @@ var _ = Describe("Rhoda e2e Test", func() {
 				}
 				err = c.Create(context.Background(), &inventory)
 				Expect(err).NotTo(HaveOccurred())
-
+			})
+			It("Should pass when inventory is processed for "+value.ProviderName, func() {
+				fmt.Println("Checking status for : " + value.ProviderName)
 				//Check inventories status
+				inventory := dbaasv1alpha1.DBaaSInventory{}
 				Eventually(func() bool {
 					fmt.Println("Checking inventory status for : " + value.ProviderName)
 					err := c.Get(context.TODO(), client.ObjectKey{
