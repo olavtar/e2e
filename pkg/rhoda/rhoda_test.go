@@ -140,8 +140,12 @@ var _ = Describe("Rhoda e2e Test", func() {
 				err = c.Create(context.Background(), &inventory)
 				Expect(err).NotTo(HaveOccurred())
 			})
+
 			It("Should pass when inventory is processed for "+value.ProviderName, func() {
 				fmt.Println("Checking status for : " + value.ProviderName)
+				fmt.Printf("Current Unix Time: %v\n", time.Now())
+				time.Sleep(30 * time.Second)
+				fmt.Printf("Current Unix Time: %v\n", time.Now())
 				//Check inventories status
 				inventory := dbaasv1alpha1.DBaaSInventory{}
 				Eventually(func() bool {
