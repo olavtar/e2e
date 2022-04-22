@@ -26,8 +26,6 @@ import (
 var _ = Describe("Rhoda e2e Test", func() {
 	var config *rest.Config
 	namespace := "openshift-dbaas-operator"
-	var providers []rhoda.ProviderAccount
-	var providerNames []string
 
 	Context("Check operator installation", func() {
 		fmt.Println("Running 1st Context")
@@ -42,7 +40,10 @@ var _ = Describe("Rhoda e2e Test", func() {
 		//})
 	})
 
-	Context("Populate providers array", func() {
+	Context("Get all the providers and loop through it to create Secrets and Inventory", func() {
+		var providerNames []string
+		var providers []rhoda.ProviderAccount
+
 		//Get ci-secret's data
 		clientset, err := kubernetes.NewForConfig(config)
 		Expect(err).NotTo(HaveOccurred())
@@ -59,6 +60,7 @@ var _ = Describe("Rhoda e2e Test", func() {
 		} else {
 			AbortSuite("ProviderList secret was not found")
 		}
+		//populate providers array
 		for _, providerName := range providerNames {
 			fmt.Println(providerName)
 			var secretData = make(map[string][]byte)
@@ -73,21 +75,18 @@ var _ = Describe("Rhoda e2e Test", func() {
 			//add to array
 			providers = append(providers, rhoda.ProviderAccount{ProviderName: providerName, SecretName: "dbaas-secret-e2e-" + providerName, SecretData: secretData})
 		}
-	})
 
-	Context("Loop through providers to create Secrets and Inventory", func() {
-		//add dbaas scheme
+		//add dbaas scheme for inventory creation
 		scheme := runtime.NewScheme()
-		err := dbaasv1alpha1.AddToScheme(scheme)
+		err = dbaasv1alpha1.AddToScheme(scheme)
 		Expect(err).NotTo(HaveOccurred())
 
-		clientset, err := kubernetes.NewForConfig(config)
 		c, err := client.New(config, client.Options{Scheme: scheme})
 		Expect(err).NotTo(HaveOccurred())
 
+		//loop through providers
 		for i := range providers {
 			value := providers[i]
-			//	Context("Should pass when secret and inventory are created for "+value.ProviderName, func() {
 			It("Should pass when secret is created for "+value.ProviderName, func() {
 				fmt.Println("Creating secret for : " + value.ProviderName)
 				//create secret
@@ -137,9 +136,9 @@ var _ = Describe("Rhoda e2e Test", func() {
 
 			It("Should pass when inventory is processed for "+value.ProviderName, func() {
 				fmt.Println("Checking status for : " + value.ProviderName)
-				fmt.Printf("Current Unix Time: %v\n", time.Now())
-				time.Sleep(30 * time.Second)
-				fmt.Printf("Current Unix Time: %v\n", time.Now())
+				//fmt.Printf("Current Unix Time: %v\n", time.Now())
+				//time.Sleep(30 * time.Second)
+				//fmt.Printf("Current Unix Time: %v\n", time.Now())
 				//Check inventories status
 				inventory := dbaasv1alpha1.DBaaSInventory{}
 				Eventually(func() bool {
@@ -151,6 +150,47 @@ var _ = Describe("Rhoda e2e Test", func() {
 					Expect(err).NotTo(HaveOccurred())
 					return inventory.Status.Conditions[0].Status == "True"
 				}, 60*time.Second, 5*time.Second).Should(BeTrue())
+
+				//test connection
+				if inventory.Status.Conditions[0].Status == "True" {
+					fmt.Println(inventory.Name)
+					if len(inventory.Status.Instances) > 0 {
+						fmt.Println(inventory.Status.Instances[0])
+						fmt.Println(inventory.Status.Instances[0].InstanceID)
+						fmt.Println(inventory.Status.Instances[0].Name)
+
+						testDBaaSConnection := dbaasv1alpha1.DBaaSConnection{
+							TypeMeta: meta.TypeMeta{
+								Kind:       "DBaaSConnection",
+								APIVersion: "dbaas.redhat.com/v1alpha1",
+							},
+							ObjectMeta: meta.ObjectMeta{
+								Name:      inventory.Status.Instances[0].Name,
+								Namespace: namespace,
+							},
+							Spec: dbaasv1alpha1.DBaaSConnectionSpec{
+								InventoryRef: dbaasv1alpha1.NamespacedName{
+									Namespace: namespace,
+									Name:      inventory.Name,
+								},
+								InstanceID: inventory.Status.Instances[0].InstanceID,
+							},
+						}
+
+						testDBaaSConnection.SetResourceVersion("")
+						//	err = c.Create(context.Background(), &testDBaaSConnection)
+						Expect(c.Create(context.Background(), &testDBaaSConnection)).Should(Succeed())
+						By("checking DBaaSConnection created")
+						Eventually(func() bool {
+							if err := c.Get(context.Background(), client.ObjectKeyFromObject(&testDBaaSConnection), &dbaasv1alpha1.DBaaSConnection{}); err != nil {
+								return false
+							}
+							return true
+						}, 60*time.Second, 5*time.Second).Should(BeTrue())
+					} else {
+						fmt.Println("No instances to connect")
+					}
+				}
 			})
 		}
 	})
