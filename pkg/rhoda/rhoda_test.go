@@ -27,16 +27,7 @@ var _ = Describe("Rhoda e2e Test", func() {
 	var config *rest.Config
 	namespace := "openshift-dbaas-operator"
 	var providers []rhoda.ProviderAccount
-	var c client.Client
 	var providerNames []string
-	var clientset *kubernetes.Clientset
-	var err error
-
-	//BeforeAll(func() {
-	//	fmt.Println("Runnig BeforeAll")
-	//	config = getConfig()
-	//	Expect(config).NotTo(BeNil())
-	//})
 
 	Context("Check operator installation", func() {
 		fmt.Println("Running 1st Context")
@@ -53,7 +44,7 @@ var _ = Describe("Rhoda e2e Test", func() {
 
 	Context("Populate providers array", func() {
 		//Get ci-secret's data
-		clientset, err = kubernetes.NewForConfig(config)
+		clientset, err := kubernetes.NewForConfig(config)
 		Expect(err).NotTo(HaveOccurred())
 
 		ciSecret, err := clientset.CoreV1().Secrets("osde2e-ci-secrets").Get(context.TODO(), "ci-secrets", meta.GetOptions{})
@@ -65,6 +56,8 @@ var _ = Describe("Rhoda e2e Test", func() {
 			fmt.Printf("providerListSecret = %s, ok = %v\n", providerListSecret, ok)
 			providerNames = strings.Split(string(providerListSecret), ",")
 			fmt.Println(providerNames)
+		} else {
+			AbortSuite("ProviderList secret was not found")
 		}
 		for _, providerName := range providerNames {
 			fmt.Println(providerName)
@@ -88,7 +81,8 @@ var _ = Describe("Rhoda e2e Test", func() {
 		err := dbaasv1alpha1.AddToScheme(scheme)
 		Expect(err).NotTo(HaveOccurred())
 
-		c, err = client.New(config, client.Options{Scheme: scheme})
+		clientset, err := kubernetes.NewForConfig(config)
+		c, err := client.New(config, client.Options{Scheme: scheme})
 		Expect(err).NotTo(HaveOccurred())
 
 		for i := range providers {
