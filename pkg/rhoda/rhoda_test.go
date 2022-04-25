@@ -155,7 +155,6 @@ var _ = Describe("Rhoda e2e Test", func() {
 				if inventory.Status.Conditions[0].Status == "True" {
 					fmt.Println(inventory.Name)
 					if len(inventory.Status.Instances) > 0 {
-						fmt.Println(inventory.Status.Instances[0])
 						fmt.Println(inventory.Status.Instances[0].InstanceID)
 						fmt.Println(inventory.Status.Instances[0].Name)
 
@@ -178,14 +177,16 @@ var _ = Describe("Rhoda e2e Test", func() {
 						}
 
 						testDBaaSConnection.SetResourceVersion("")
-						//	err = c.Create(context.Background(), &testDBaaSConnection)
 						Expect(c.Create(context.Background(), &testDBaaSConnection)).Should(Succeed())
 						By("checking DBaaSConnection created")
 						Eventually(func() bool {
 							if err := c.Get(context.Background(), client.ObjectKeyFromObject(&testDBaaSConnection), &dbaasv1alpha1.DBaaSConnection{}); err != nil {
 								return false
+							} else {
+								fmt.Println("Instance Connected")
+								fmt.Println(testDBaaSConnection)
+								return true
 							}
-							return true
 						}, 60*time.Second, 5*time.Second).Should(BeTrue())
 					} else {
 						fmt.Println("No instances to connect")
