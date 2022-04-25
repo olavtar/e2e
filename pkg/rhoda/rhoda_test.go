@@ -36,8 +36,10 @@ var _ = Describe("Rhoda e2e Test", func() {
 
 		// Make sure the CRD exists
 		_, err = apiextensions.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), "dbaasplatforms.dbaas.redhat.com", meta.GetOptions{})
+		if err != nil {
+			panic(err.Error())
+		}
 		Expect(err).NotTo(HaveOccurred())
-		//})
 	})
 
 	Context("Get all the providers and loop through it to create Secrets and Inventory", func() {
@@ -201,6 +203,9 @@ var _ = Describe("Rhoda e2e Test", func() {
 					} else {
 						fmt.Println("No instances to connect")
 					}
+				} else {
+					fmt.Println("Inventory Status is not Ready for connection")
+					Expect(inventory.Status.Conditions[0].Status).To(Equal("True"))
 				}
 			})
 		}
