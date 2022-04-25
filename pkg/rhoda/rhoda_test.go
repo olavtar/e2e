@@ -142,13 +142,18 @@ var _ = Describe("Rhoda e2e Test", func() {
 				//Check inventories status
 				inventory := dbaasv1alpha1.DBaaSInventory{}
 				Eventually(func() bool {
-					fmt.Println("Eventually status for : " + value.ProviderName)
-					err := c.Get(context.TODO(), client.ObjectKey{
+					fmt.Println("Eventually loop for : " + value.ProviderName)
+					err := c.Get(context.Background(), client.ObjectKey{
 						Namespace: namespace,
 						Name:      "provider-acct-test-e2e-" + value.ProviderName,
 					}, &inventory)
 					Expect(err).NotTo(HaveOccurred())
-					return inventory.Status.Conditions[0].Status == "True"
+					if len(inventory.Status.Conditions) > 0 {
+						return inventory.Status.Conditions[0].Status == "True"
+					} else {
+						fmt.Println("inventory.Status.Conditions Len is 0")
+						return false
+					}
 				}, 60*time.Second, 5*time.Second).Should(BeTrue())
 
 				//test connection
@@ -178,14 +183,19 @@ var _ = Describe("Rhoda e2e Test", func() {
 
 						testDBaaSConnection.SetResourceVersion("")
 						Expect(c.Create(context.Background(), &testDBaaSConnection)).Should(Succeed())
-						By("checking DBaaSConnection created")
+						By("checking DBaaSConnection status for: " + inventory.Status.Instances[0].Name)
 						Eventually(func() bool {
-							if err := c.Get(context.Background(), client.ObjectKeyFromObject(&testDBaaSConnection), &dbaasv1alpha1.DBaaSConnection{}); err != nil {
-								return false
+							err := c.Get(context.Background(), client.ObjectKey{
+								Namespace: namespace,
+								Name:      inventory.Status.Instances[0].Name,
+							}, &testDBaaSConnection)
+							Expect(err).NotTo(HaveOccurred())
+							fmt.Println("checking DBaaSConnection status for: " + inventory.Status.Instances[0].Name)
+							if len(testDBaaSConnection.Status.Conditions) > 0 {
+								return testDBaaSConnection.Status.Conditions[0].Status == "True"
 							} else {
-								fmt.Println("Instance Connected")
-								fmt.Println(testDBaaSConnection)
-								return true
+								fmt.Println("testDBaaSConnection.Status.Conditions Len is 0")
+								return false
 							}
 						}, 60*time.Second, 5*time.Second).Should(BeTrue())
 					} else {
