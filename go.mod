@@ -3,7 +3,6 @@ module e2e
 go 1.16
 
 require (
-	github.com/PuerkitoBio/goquery v1.8.0
 	github.com/RHEcosystemAppEng/dbaas-operator v0.1.5-0.20220329142537-6708678c607a
 	github.com/onsi/ginkgo/v2 v2.1.3
 	github.com/onsi/gomega v1.19.0
