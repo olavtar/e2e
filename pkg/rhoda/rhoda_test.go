@@ -6,6 +6,8 @@ import (
 	"flag"
 	"fmt"
 	dbaasv1alpha1 "github.com/RHEcosystemAppEng/dbaas-operator/api/v1alpha1"
+	"github.com/chromedp/cdproto/cdp"
+	"github.com/chromedp/cdproto/network"
 	"github.com/chromedp/chromedp"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -334,48 +336,45 @@ var _ = Describe("Rhoda e2e Test", func() {
 		fmt.Println("Login")
 		ctx, cancel := chromedp.NewContext(context.Background())
 		defer cancel()
+		//Setting timeout
+		//ctx, cancel = context.WithTimeout(ctx, 5*time.Second)
+		//defer cancel()
 
-		url := "https://google.com"
-
+		var nodes []*cdp.Node
+		selector := "#page-sidebar div ul li button"
+		url := "https://console-openshift-console.apps.rhoda-lab.51ty.p1.openshiftapps.com/dashboards"
+		// url:= "https://console-openshift-console.apps.rhoda-sp-prod.lue0.p1.openshiftapps.com/dashboards"
 		var data string
 
 		if err := chromedp.Run(ctx,
-
+			SetCookie("openshift-session-token", "sha256~v-LvCi8qPPGi63c8u44lW3k6YQNsXpYqnUjQj7PTBfU", "console-openshift-console.apps.rhoda-lab.51ty.p1.openshiftapps.com", "/", false, false),
 			chromedp.Navigate(url),
+			chromedp.WaitVisible(`#page-sidebar`),
 			chromedp.OuterHTML("html", &data, chromedp.ByQuery),
+			//	chromedp.Nodes(`button`, &nodes, chromedp.ByQueryAll),
+
+			chromedp.Nodes(selector, &nodes),
+			//chromedp.Text(`button`, &selector, chromedp.NodeVisible, chromedp.ByQuery),
 		); err != nil {
 			panic(err)
 		}
+		for _, node := range nodes {
+			//NodeName is the button here
+			fmt.Println(node.NodeName)
+			//	var selectors []*cdp.Node
 
-		fmt.Println(data)
-
-		//req, err := http.NewRequest("GET", "https://console-openshift-console.apps.rhoda-lab.51ty.p1.openshiftapps.com/dashboards", nil)
-		////req, err := http.NewRequest("GET", "https://google.com", nil)
-		//
-		//if err != nil {
-		//	return
-		//}
-		//
-		//req.AddCookie(&http.Cookie{Name: "openshift-session-token", Value: "sha256~SYPPHwX9Ce6nUjNT5EM8xBD-NxkyoXuQ3hszGu-nUcM"})
-		//
-		//client := &http.Client{}
-		//resp, err := client.Do(req)
-		//if err != nil {
-		//	return
-		//}
-		//defer resp.Body.Close()
-		//
-		//if resp.StatusCode != 200 {
-		//	fmt.Println(resp.StatusCode)
-		//}
-		////	content, err := ioutil.ReadAll(resp.Body)
-		//fmt.Println("---- Starting to parse ------------------------")
-		//b, err := httputil.DumpResponse(resp, true)
-		//if err != nil {
-		//	panic(err)
-		//}
-		//
-		//fmt.Println(string(b))
+			for _, child := range node.Children {
+				//getting Data Services Button
+				fmt.Println(child.NodeValue)
+				if child.NodeValue == "Data Services" {
+					//get the parent's parent which is Li
+					li := child.Parent.Parent
+					fmt.Println(li)
+					checkAdminDashboard(li, ctx)
+					//	selector2 := "#page-sidebar div ul li section ul li a"
+				}
+			}
+		}
 
 	})
 })
@@ -404,6 +403,67 @@ func getConfig() *rest.Config {
 		panic(err.Error())
 	}
 	return config
+}
+
+func checkAdminDashboard(li *cdp.Node, ctx context.Context) {
+	fmt.Println("checkAdminDashboard")
+	fmt.Println(li)
+	var data string
+	selector := "section ul li a"
+	var result []*cdp.Node
+
+	if err := chromedp.Run(ctx,
+		chromedp.Nodes(selector, &result, chromedp.ByQuery, chromedp.FromNode(li)),
+	); err != nil {
+		panic(err)
+	}
+	fmt.Println(result)
+	for _, aNode := range result {
+		//temp stuff for visibility
+		text := aNode.Children[0].NodeValue
+		fmt.Println(text)
+		u := aNode.AttributeValue("href")
+		fmt.Printf("node: %s | href = %s\n", aNode.LocalName, u)
+		textSelector := "#content-scrollable h2"
+		var dataAccessResult []*cdp.Node
+
+		if aNode.Children[0].NodeValue == "Database Access" {
+			u := "https://console-openshift-console.apps.rhoda-lab.51ty.p1.openshiftapps.com" + aNode.AttributeValue("href")
+			fmt.Printf("node: %s | href = %s\n", aNode.LocalName, u)
+			resp, err := chromedp.RunResponse(ctx,
+				chromedp.Navigate(u),
+				chromedp.WaitVisible(`#content-scrollable button`),
+				chromedp.OuterHTML("html", &data, chromedp.ByQuery),
+				chromedp.Nodes(textSelector, &dataAccessResult),
+			)
+			if err != nil {
+				fmt.Println("Error", err.Error())
+				panic(err.Error())
+			}
+			status2 := resp.Status
+			fmt.Println("second status code:", status2)
+			for _, dataAccessNode := range dataAccessResult {
+				fmt.Println(dataAccessNode.Children[0].NodeValue)
+			}
+		}
+	}
+}
+
+func SetCookie(name, value, domain, path string, httpOnly, secure bool) chromedp.Action {
+	return chromedp.ActionFunc(func(ctx context.Context) error {
+		expr := cdp.TimeSinceEpoch(time.Now().Add(180 * 24 * time.Hour))
+		success := network.SetCookie(name, value).
+			WithExpires(&expr).
+			WithDomain(domain).
+			WithPath(path).
+			WithHTTPOnly(httpOnly).
+			WithSecure(secure).
+			Do(ctx)
+		if success != nil {
+			return fmt.Errorf("could not set cookie %s", name)
+		}
+		return nil
+	})
 }
 
 //func cleanUpCluster() {
