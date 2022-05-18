@@ -371,7 +371,7 @@ var _ = Describe("Rhoda e2e Test", func() {
 				if child.NodeValue == "Data Services" {
 					//get the parent's parent which is Li to click on the Database Access button
 					li := child.Parent.Parent
-					fmt.Println(li)
+					//fmt.Println(li)
 					//checkAdminDashboard(li, ctx)
 					var data string
 					selector := "section ul li a"
@@ -382,15 +382,14 @@ var _ = Describe("Rhoda e2e Test", func() {
 					)
 					Expect(err).NotTo(HaveOccurred())
 
-					fmt.Println(result)
+					//fmt.Println(result)
 					for _, aNode := range result {
 						//temp stuff for visibility
 						text := aNode.Children[0].NodeValue
 						fmt.Println(text)
-						u := aNode.AttributeValue("href")
-						fmt.Printf("node: %s | href = %s\n", aNode.LocalName, u)
-						textSelector := "#content-scrollable h1 div"
-						var dataAccessResult []*cdp.Node
+						//	u := aNode.AttributeValue("href")
+						//	fmt.Printf("node: %s | href = %s\n", aNode.LocalName, u)
+						var textExists bool
 
 						if aNode.Children[0].NodeValue == "Database Access" {
 							u := "https://console-openshift-console.apps.rhoda-lab.51ty.p1.openshiftapps.com" + aNode.AttributeValue("href")
@@ -399,17 +398,10 @@ var _ = Describe("Rhoda e2e Test", func() {
 								chromedp.Navigate(u),
 								chromedp.WaitVisible(`#content-scrollable button`),
 								chromedp.OuterHTML("html", &data, chromedp.ByQuery),
-								chromedp.Nodes(textSelector, &dataAccessResult, chromedp.ByQuery),
+								chromedp.EvaluateAsDevTools(`document.querySelector("#content-scrollable h1 div" ).innerHTML.includes("Database Access")`, &textExists),
 							)
 							Expect(err).NotTo(HaveOccurred())
-							//status2 := resp.Status
-							//fmt.Println("second status code:", status2)
-							//for _, dataAccessNode := range dataAccessResult {
-							//	fmt.Println(len(dataAccessResult))
-							//	fmt.Println(len(dataAccessNode.Children))
-							//
-							//	//fmt.Println(dataAccessNode.Children[0].NodeValue)
-							//}
+							Expect(textExists).Should(BeTrue())
 						}
 					}
 				}
