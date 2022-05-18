@@ -28,11 +28,10 @@ import (
 )
 
 var _ = Describe("Rhoda e2e Test", func() {
-	var config *rest.Config
+	config := getConfig()
 	namespace := "openshift-dbaas-operator"
 
 	Context("Check operator installation", func() {
-		config = getConfig()
 		apiextensions, err := apiserver.NewForConfig(config)
 		Expect(err).NotTo(HaveOccurred())
 		It("Should pass when operator installation is validated", func() {
