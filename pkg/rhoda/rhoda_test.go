@@ -22,7 +22,7 @@ import (
 	"k8s.io/client-go/util/homedir"
 	"os"
 	"path/filepath"
-	"sigs.k8s.io/controller-runtime/pkg/client"
+	k8sClient "sigs.k8s.io/controller-runtime/pkg/client"
 	"strings"
 	"time"
 )
@@ -39,7 +39,7 @@ var _ = Describe("Rhoda e2e Test", func() {
 			// Make sure the CRD exists
 			_, err = apiextensions.ApiextensionsV1().CustomResourceDefinitions().Get(context.TODO(), "dbaasplatforms.dbaas.redhat.com", meta.GetOptions{})
 			if err != nil {
-				panic(err.Error())
+				AbortSuite(err.Error())
 			}
 			Expect(err).NotTo(HaveOccurred())
 		})
@@ -86,21 +86,21 @@ var _ = Describe("Rhoda e2e Test", func() {
 		err = dbaasv1alpha1.AddToScheme(scheme)
 		Expect(err).NotTo(HaveOccurred())
 
-		c, err := client.New(config, client.Options{Scheme: scheme})
+		client, err := k8sClient.New(config, k8sClient.Options{Scheme: scheme})
 		Expect(err).NotTo(HaveOccurred())
 
 		//loop through providers
 		for i := range providers {
-			value := providers[i]
-			It("Should pass when secret and provider created and connection status is checked for "+value.ProviderName, func() {
+			provider := providers[i]
+			It("Should pass when secret and provider created and connection status is checked for "+provider.ProviderName, func() {
 				DeferCleanup(func() {
 					fmt.Println("DeferCleanup Started")
-					fmt.Println("deleting Secret: " + value.SecretName)
-					Expect(clientset.CoreV1().Secrets("openshift-dbaas-operator").Delete(context.Background(), value.SecretName, meta.DeleteOptions{})).Should(Succeed())
+					fmt.Println("deleting Secret: " + provider.SecretName)
+					Expect(clientset.CoreV1().Secrets("openshift-dbaas-operator").Delete(context.Background(), provider.SecretName, meta.DeleteOptions{})).Should(Succeed())
 
 					By("checking Secret deleted")
 					Eventually(func() bool {
-						_, err := clientset.CoreV1().Secrets("openshift-dbaas-operator").Get(context.Background(), value.SecretName, meta.GetOptions{})
+						_, err := clientset.CoreV1().Secrets("openshift-dbaas-operator").Get(context.Background(), provider.SecretName, meta.GetOptions{})
 						if err != nil && errors.IsNotFound(err) {
 							fmt.Println("Deleted, no secret found")
 							return true
@@ -108,15 +108,15 @@ var _ = Describe("Rhoda e2e Test", func() {
 						return false
 					}, 60*time.Second, 5*time.Second).Should(BeTrue())
 
-					fmt.Println("deleting Connection and Provider for: " + value.ProviderName)
+					fmt.Println("deleting Connection and Provider for: " + provider.ProviderName)
 
 					By("deleting DBaaSConnection")
 					inventory := dbaasv1alpha1.DBaaSInventory{}
 
 					//get Inventory
-					err := c.Get(context.Background(), client.ObjectKey{
+					err := client.Get(context.Background(), k8sClient.ObjectKey{
 						Namespace: namespace,
-						Name:      "provider-acct-test-e2e-" + value.ProviderName,
+						Name:      "provider-acct-test-e2e-" + provider.ProviderName,
 					}, &inventory)
 					Expect(err).NotTo(HaveOccurred())
 					if len(inventory.Status.Instances) > 0 {
@@ -124,17 +124,17 @@ var _ = Describe("Rhoda e2e Test", func() {
 
 						//get inventory's first dbaas connection
 						dbaaSConnection := dbaasv1alpha1.DBaaSConnection{}
-						err = c.Get(context.Background(), client.ObjectKey{
+						err = client.Get(context.Background(), k8sClient.ObjectKey{
 							Namespace: namespace,
 							Name:      inventory.Status.Instances[0].Name,
 						}, &dbaaSConnection)
 						Expect(err).NotTo(HaveOccurred())
 						fmt.Println("deleting dbaas connection: " + inventory.Status.Instances[0].Name)
-						Expect(c.Delete(context.Background(), &dbaaSConnection)).Should(Succeed())
+						Expect(client.Delete(context.Background(), &dbaaSConnection)).Should(Succeed())
 
 						By("checking DBaaSConnection deleted")
 						Eventually(func() bool {
-							err := c.Get(context.Background(), client.ObjectKeyFromObject(&dbaaSConnection), &dbaasv1alpha1.DBaaSConnection{})
+							err := client.Get(context.Background(), k8sClient.ObjectKeyFromObject(&dbaaSConnection), &dbaasv1alpha1.DBaaSConnection{})
 							if err != nil && errors.IsNotFound(err) {
 								fmt.Println("Deleted, no connection found")
 								return true
@@ -143,12 +143,12 @@ var _ = Describe("Rhoda e2e Test", func() {
 						}, 60*time.Second, 5*time.Second).Should(BeTrue())
 					}
 					By("deleting Provider Account")
-					fmt.Println("deleting provider Acct: " + "provider-acct-test-e2e-" + value.ProviderName)
-					Expect(c.Delete(context.Background(), &inventory)).Should(Succeed())
+					fmt.Println("deleting provider Acct: " + "provider-acct-test-e2e-" + provider.ProviderName)
+					Expect(client.Delete(context.Background(), &inventory)).Should(Succeed())
 
 					By("checking Provider Acct deleted")
 					Eventually(func() bool {
-						err := c.Get(context.Background(), client.ObjectKeyFromObject(&inventory), &dbaasv1alpha1.DBaaSInventory{})
+						err := client.Get(context.Background(), k8sClient.ObjectKeyFromObject(&inventory), &dbaasv1alpha1.DBaaSInventory{})
 						if err != nil && errors.IsNotFound(err) {
 							fmt.Println("Deleted, no provider acct found")
 							return true
@@ -158,7 +158,7 @@ var _ = Describe("Rhoda e2e Test", func() {
 					//}
 				})
 
-				fmt.Println("Creating secret for : " + value.ProviderName)
+				fmt.Println("Creating secret for : " + provider.ProviderName)
 				//create secret
 				secret := core.Secret{
 					TypeMeta: meta.TypeMeta{
@@ -166,66 +166,58 @@ var _ = Describe("Rhoda e2e Test", func() {
 						APIVersion: "v1",
 					},
 					ObjectMeta: meta.ObjectMeta{
-						Name:      value.SecretName,
+						Name:      provider.SecretName,
 						Namespace: namespace,
 					},
-					Data: value.SecretData,
+					Data: provider.SecretData,
 				}
 				_, err = clientset.CoreV1().Secrets("openshift-dbaas-operator").Create(context.TODO(), &secret, meta.CreateOptions{})
 				Expect(err).NotTo(HaveOccurred())
 
 				//create inventory
-				fmt.Println("Creating inventory for : " + value.ProviderName)
+				fmt.Println("Creating inventory for : " + provider.ProviderName)
 				inventory := dbaasv1alpha1.DBaaSInventory{
 					TypeMeta: meta.TypeMeta{
 						Kind:       "DBaaSInventory",
 						APIVersion: "dbaas.redhat.com/v1alpha1",
 					},
 					ObjectMeta: meta.ObjectMeta{
-						Name:      "provider-acct-test-e2e-" + value.ProviderName,
+						Name:      "provider-acct-test-e2e-" + provider.ProviderName,
 						Namespace: namespace,
 						Labels:    map[string]string{"related-to": "dbaas-operator", "type": "dbaas-vendor-service"},
 					},
 					Spec: dbaasv1alpha1.DBaaSOperatorInventorySpec{
 						ProviderRef: dbaasv1alpha1.NamespacedName{
 							Namespace: namespace,
-							Name:      string(value.SecretData["providerType"]),
+							Name:      string(provider.SecretData["providerType"]),
 						},
 						DBaaSInventorySpec: dbaasv1alpha1.DBaaSInventorySpec{
 							CredentialsRef: &dbaasv1alpha1.NamespacedName{
 								Namespace: namespace,
-								Name:      value.SecretName,
+								Name:      provider.SecretName,
 							},
 						},
 					},
 				}
-				//Expect(c.Create(context.Background(), &inventory)).Should(Succeed())
-				//By("checking Provider created")
-				//Eventually(func() bool {
-				//	if err := c.Get(context.Background(), client.ObjectKeyFromObject(&inventory), &dbaasv1alpha1.DBaaSInventory{}); err != nil {
-				//		return false
-				//	}
-				//	return true
-				//}, 60*time.Second, 5*time.Second).Should(BeTrue())
-				err = c.Create(context.Background(), &inventory)
+				err = client.Create(context.Background(), &inventory)
 				Expect(err).NotTo(HaveOccurred())
-				//	})
 
-				//	It("Should pass when inventory is processed for "+value.ProviderName, func() {
+				//sleep timer to make sure things run in parallel
 				//fmt.Printf("Current Unix Time: %v\n", time.Now())
 				//time.Sleep(30 * time.Second)
 				//fmt.Printf("Current Unix Time: %v\n", time.Now())
+
 				//Check inventories status
 				inventory = dbaasv1alpha1.DBaaSInventory{}
 				Eventually(func() bool {
-					fmt.Println("Checking status for : " + value.ProviderName)
-					err := c.Get(context.Background(), client.ObjectKey{
+					fmt.Println("Checking status for : " + provider.ProviderName)
+					err := client.Get(context.Background(), k8sClient.ObjectKey{
 						Namespace: namespace,
-						Name:      "provider-acct-test-e2e-" + value.ProviderName,
+						Name:      "provider-acct-test-e2e-" + provider.ProviderName,
 					}, &inventory)
 					Expect(err).NotTo(HaveOccurred())
 					if len(inventory.Status.Conditions) > 0 {
-						return inventory.Status.Conditions[0].Status == "True"
+						return inventory.Status.Conditions[0].Type == "SpecSynced" && inventory.Status.Conditions[0].Status == "True"
 					} else {
 						fmt.Println("inventory.Status.Conditions Len is 0")
 						return false
@@ -233,7 +225,7 @@ var _ = Describe("Rhoda e2e Test", func() {
 				}, 60*time.Second, 5*time.Second).Should(BeTrue())
 
 				//test connection
-				if inventory.Status.Conditions[0].Status == "True" {
+				if inventory.Status.Conditions[0].Type == "SpecSynced" && inventory.Status.Conditions[0].Status == "True" {
 					fmt.Println(inventory.Name)
 
 					if len(inventory.Status.Instances) > 0 {
@@ -256,17 +248,17 @@ var _ = Describe("Rhoda e2e Test", func() {
 						}
 
 						testDBaaSConnection.SetResourceVersion("")
-						Expect(c.Create(context.Background(), &testDBaaSConnection)).Should(Succeed())
+						Expect(client.Create(context.Background(), &testDBaaSConnection)).Should(Succeed())
 						By("checking DBaaSConnection status for: " + inventory.Status.Instances[0].Name)
 						Eventually(func() bool {
 							fmt.Println("checking DBaaSConnection status for: " + inventory.Status.Instances[0].Name)
-							err := c.Get(context.Background(), client.ObjectKey{
+							err := client.Get(context.Background(), k8sClient.ObjectKey{
 								Namespace: namespace,
 								Name:      inventory.Status.Instances[0].Name,
 							}, &testDBaaSConnection)
 							Expect(err).NotTo(HaveOccurred())
 							if len(testDBaaSConnection.Status.Conditions) > 0 {
-								return testDBaaSConnection.Status.Conditions[0].Status == "True"
+								return testDBaaSConnection.Status.Conditions[0].Type == "ReadyForBinding" && testDBaaSConnection.Status.Conditions[0].Status == "True"
 							} else {
 								fmt.Println("testDBaaSConnection.Status.Conditions Len is 0")
 								return false
@@ -281,79 +273,6 @@ var _ = Describe("Rhoda e2e Test", func() {
 				}
 			})
 		}
-
-		//Describe("After All Clean up cluster", func() {
-		//	for i := range providers {
-		//		value := providers[i]
-		//		It("Cleaning up Secrets, Provider Acct and Dbaas Connections", func() {
-		//			fmt.Println("deleting Secret: " + value.SecretName)
-		//			Expect(clientset.CoreV1().Secrets("openshift-dbaas-operator").Delete(context.Background(), value.SecretName, meta.DeleteOptions{})).Should(Succeed())
-		//
-		//			By("checking Secret deleted")
-		//			Eventually(func() bool {
-		//				_, err := clientset.CoreV1().Secrets("openshift-dbaas-operator").Get(context.Background(), value.SecretName, meta.GetOptions{})
-		//				if err != nil && errors.IsNotFound(err) {
-		//					fmt.Println("Deleted, no secret found")
-		//					return true
-		//				}
-		//				return false
-		//			}, 60*time.Second, 5*time.Second).Should(BeTrue())
-		//
-		//			//})
-		//
-		//			//	It("Cleaning up Providers and instances", func() {
-		//			fmt.Println("deleting Connection and Provider for: " + value.ProviderName)
-		//
-		//			By("deleting DBaaSConnection")
-		//			inventory := dbaasv1alpha1.DBaaSInventory{}
-		//
-		//			//get Inventory
-		//			err := c.Get(context.Background(), client.ObjectKey{
-		//				Namespace: namespace,
-		//				Name:      "provider-acct-test-e2e-" + value.ProviderName,
-		//			}, &inventory)
-		//			Expect(err).NotTo(HaveOccurred())
-		//			if len(inventory.Status.Instances) > 0 {
-		//				fmt.Println(inventory.Status.Instances[0].Name)
-		//
-		//				//get inventory's first dbaas connection
-		//				dbaaSConnection := dbaasv1alpha1.DBaaSConnection{}
-		//				err = c.Get(context.Background(), client.ObjectKey{
-		//					Namespace: namespace,
-		//					Name:      inventory.Status.Instances[0].Name,
-		//				}, &dbaaSConnection)
-		//				Expect(err).NotTo(HaveOccurred())
-		//				fmt.Println("deleting dbaas connection: " + inventory.Status.Instances[0].Name)
-		//				Expect(c.Delete(context.Background(), &dbaaSConnection)).Should(Succeed())
-		//
-		//				By("checking DBaaSConnection deleted")
-		//				Eventually(func() bool {
-		//					err := c.Get(context.Background(), client.ObjectKeyFromObject(&dbaaSConnection), &dbaasv1alpha1.DBaaSConnection{})
-		//					if err != nil && errors.IsNotFound(err) {
-		//						fmt.Println("Deleted, no connection found")
-		//
-		//						return true
-		//					}
-		//					return false
-		//				}, 60*time.Second, 5*time.Second).Should(BeTrue())
-		//			}
-		//			By("deleting Provider Account")
-		//			fmt.Println("deleting provider Acct: " + "provider-acct-test-e2e-" + value.ProviderName)
-		//			Expect(c.Delete(context.Background(), &inventory)).Should(Succeed())
-		//
-		//			By("checking Provider Acct deleted")
-		//			Eventually(func() bool {
-		//				err := c.Get(context.Background(), client.ObjectKeyFromObject(&inventory), &dbaasv1alpha1.DBaaSInventory{})
-		//				if err != nil && errors.IsNotFound(err) {
-		//					fmt.Println("Deleted, no provider acct found")
-		//					return true
-		//				}
-		//				return false
-		//			}, 60*time.Second, 5*time.Second).Should(BeTrue())
-		//
-		//		})
-		//	}
-		//})
 	})
 
 	It("Console Login UI and pages access check", func() {
