@@ -13,7 +13,6 @@ import (
 	. "github.com/onsi/gomega"
 	core "k8s.io/api/core/v1"
 	apiserver "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
-	"k8s.io/apimachinery/pkg/api/errors"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
@@ -46,7 +45,6 @@ var _ = Describe("Rhoda e2e Test", func() {
 	})
 
 	Context("Get all the providers and loop through it to create Secrets and Inventory", func() {
-		var providerNames []string
 		var providers []rhoda.ProviderAccount
 		//Get ci-secret's data
 		clientset, err := kubernetes.NewForConfig(config)
@@ -55,30 +53,14 @@ var _ = Describe("Rhoda e2e Test", func() {
 		if err != nil {
 			AbortSuite(err.Error())
 		}
-		fmt.Println("ciSecret Found: ")
 
 		//get the list of providers by getting providerList secret
 		if providerListSecret, ok := ciSecret.Data["providerList"]; ok {
 			//fmt.Printf("providerListSecret = %s, ok = %v\n", providerListSecret, ok)
-			providerNames = strings.Split(string(providerListSecret), ",")
-			fmt.Println(providerNames)
+			providerNames := strings.Split(string(providerListSecret), ",")
+			providers = getProvidersData(providerNames, ciSecret.Data)
 		} else {
 			AbortSuite("ProviderList secret was not found")
-		}
-		//populate providers array
-		for _, providerName := range providerNames {
-			fmt.Println(providerName)
-			var secretData = make(map[string][]byte)
-			for key, value := range ciSecret.Data {
-				if strings.HasPrefix(key, providerName) {
-					fmt.Printf("    %s: %s\n", key, value)
-					var keyName = strings.Split(key, "-")
-					//create map of secret data
-					secretData[keyName[1]] = value
-				}
-			}
-			//add provider's data to an array
-			providers = append(providers, rhoda.ProviderAccount{ProviderName: providerName, SecretName: "dbaas-secret-e2e-" + providerName, SecretData: secretData})
 		}
 
 		//add dbaas scheme for inventory creation
@@ -97,16 +79,6 @@ var _ = Describe("Rhoda e2e Test", func() {
 					fmt.Println("DeferCleanup Started")
 					fmt.Println("deleting Secret: " + provider.SecretName)
 					Expect(clientset.CoreV1().Secrets("openshift-dbaas-operator").Delete(context.Background(), provider.SecretName, meta.DeleteOptions{})).Should(Succeed())
-
-					By("checking Secret deleted")
-					Eventually(func() bool {
-						_, err := clientset.CoreV1().Secrets("openshift-dbaas-operator").Get(context.Background(), provider.SecretName, meta.GetOptions{})
-						if err != nil && errors.IsNotFound(err) {
-							fmt.Println("Deleted, no secret found")
-							return true
-						}
-						return false
-					}, 60*time.Second, 5*time.Second).Should(BeTrue())
 
 					fmt.Println("deleting Connection and Provider for: " + provider.ProviderName)
 
@@ -131,31 +103,11 @@ var _ = Describe("Rhoda e2e Test", func() {
 						Expect(err).NotTo(HaveOccurred())
 						fmt.Println("deleting dbaas connection: " + inventory.Status.Instances[0].Name)
 						Expect(client.Delete(context.Background(), &dbaaSConnection)).Should(Succeed())
-
-						By("checking DBaaSConnection deleted")
-						Eventually(func() bool {
-							err := client.Get(context.Background(), k8sClient.ObjectKeyFromObject(&dbaaSConnection), &dbaasv1alpha1.DBaaSConnection{})
-							if err != nil && errors.IsNotFound(err) {
-								fmt.Println("Deleted, no connection found")
-								return true
-							}
-							return false
-						}, 60*time.Second, 5*time.Second).Should(BeTrue())
 					}
+
 					By("deleting Provider Account")
 					fmt.Println("deleting provider Acct: " + "provider-acct-test-e2e-" + provider.ProviderName)
 					Expect(client.Delete(context.Background(), &inventory)).Should(Succeed())
-
-					By("checking Provider Acct deleted")
-					Eventually(func() bool {
-						err := client.Get(context.Background(), k8sClient.ObjectKeyFromObject(&inventory), &dbaasv1alpha1.DBaaSInventory{})
-						if err != nil && errors.IsNotFound(err) {
-							fmt.Println("Deleted, no provider acct found")
-							return true
-						}
-						return false
-					}, 60*time.Second, 5*time.Second).Should(BeTrue())
-					//}
 				})
 
 				fmt.Println("Creating secret for : " + provider.ProviderName)
@@ -208,16 +160,23 @@ var _ = Describe("Rhoda e2e Test", func() {
 				//fmt.Printf("Current Unix Time: %v\n", time.Now())
 
 				//Check inventories status
-				inventory = dbaasv1alpha1.DBaaSInventory{}
+				inventoryStatusReady := false
 				Eventually(func() bool {
+					inventoryStatusCheck := dbaasv1alpha1.DBaaSInventory{}
 					fmt.Println("Checking status for : " + provider.ProviderName)
 					err := client.Get(context.Background(), k8sClient.ObjectKey{
 						Namespace: namespace,
 						Name:      "provider-acct-test-e2e-" + provider.ProviderName,
-					}, &inventory)
+					}, &inventoryStatusCheck)
 					Expect(err).NotTo(HaveOccurred())
-					if len(inventory.Status.Conditions) > 0 {
-						return inventory.Status.Conditions[0].Type == "SpecSynced" && inventory.Status.Conditions[0].Status == "True"
+					if len(inventoryStatusCheck.Status.Conditions) > 0 {
+						for _, inventStatus := range inventoryStatusCheck.Status.Conditions {
+							if inventStatus.Type == "SpecSynced" && inventStatus.Status == "True" {
+								inventoryStatusReady = true
+								return true
+							}
+						}
+						return false
 					} else {
 						fmt.Println("inventory.Status.Conditions Len is 0")
 						return false
@@ -225,7 +184,7 @@ var _ = Describe("Rhoda e2e Test", func() {
 				}, 60*time.Second, 5*time.Second).Should(BeTrue())
 
 				//test connection
-				if inventory.Status.Conditions[0].Type == "SpecSynced" && inventory.Status.Conditions[0].Status == "True" {
+				if inventoryStatusReady == true {
 					fmt.Println(inventory.Name)
 
 					if len(inventory.Status.Instances) > 0 {
@@ -247,7 +206,6 @@ var _ = Describe("Rhoda e2e Test", func() {
 							},
 						}
 
-						testDBaaSConnection.SetResourceVersion("")
 						Expect(client.Create(context.Background(), &testDBaaSConnection)).Should(Succeed())
 						By("checking DBaaSConnection status for: " + inventory.Status.Instances[0].Name)
 						Eventually(func() bool {
@@ -258,7 +216,12 @@ var _ = Describe("Rhoda e2e Test", func() {
 							}, &testDBaaSConnection)
 							Expect(err).NotTo(HaveOccurred())
 							if len(testDBaaSConnection.Status.Conditions) > 0 {
-								return testDBaaSConnection.Status.Conditions[0].Type == "ReadyForBinding" && testDBaaSConnection.Status.Conditions[0].Status == "True"
+								for _, connStatus := range testDBaaSConnection.Status.Conditions {
+									if connStatus.Type == "ReadyForBinding" && connStatus.Status == "True" {
+										return true
+									}
+								}
+								return false
 							} else {
 								fmt.Println("testDBaaSConnection.Status.Conditions Len is 0")
 								return false
@@ -268,8 +231,7 @@ var _ = Describe("Rhoda e2e Test", func() {
 						fmt.Println("No instances to connect")
 					}
 				} else {
-					fmt.Println("Inventory Status is not Ready for connection")
-					Expect(inventory.Status.Conditions[0].Status).To(Equal("True"))
+					Expect(inventoryStatusReady).Should(BeTrue(), "Inventory Status is not Ready for connection")
 				}
 			})
 		}
@@ -353,6 +315,25 @@ var _ = Describe("Rhoda e2e Test", func() {
 		}
 	})
 })
+
+func getProvidersData(providerNames []string, ciSecretData map[string][]byte) []rhoda.ProviderAccount {
+	var providers []rhoda.ProviderAccount
+	for _, providerName := range providerNames {
+		fmt.Println(providerName)
+		var secretData = make(map[string][]byte)
+		for key, value := range ciSecretData {
+			if strings.HasPrefix(key, providerName) {
+				fmt.Printf("    %s: %s\n", key, value)
+				var keyName = strings.Split(key, "-")
+				//create map of secret data
+				secretData[keyName[1]] = value
+			}
+		}
+		//add provider's data to an array
+		providers = append(providers, rhoda.ProviderAccount{ProviderName: providerName, SecretName: "dbaas-secret-e2e-" + providerName, SecretData: secretData})
+	}
+	return providers
+}
 
 func getConfig() *rest.Config {
 	fmt.Println("Running getConfig")
