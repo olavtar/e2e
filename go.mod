@@ -8,6 +8,7 @@ require (
 	github.com/chromedp/chromedp v0.8.1
 	github.com/onsi/ginkgo/v2 v2.1.3
 	github.com/onsi/gomega v1.19.0
+	github.com/openshift/api v0.0.0-20210910062324-a41d3573a3ba
 	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 	k8s.io/api v0.22.1
 	k8s.io/apiextensions-apiserver v0.22.1

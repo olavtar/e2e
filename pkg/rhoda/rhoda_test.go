@@ -11,11 +11,11 @@ import (
 	"github.com/chromedp/chromedp"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	routev1 "github.com/openshift/api/route/v1"
 	core "k8s.io/api/core/v1"
 	apiserver "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -65,15 +65,7 @@ var _ = Describe("Rhoda e2e Test", func() {
 		}
 
 		//add dbaas scheme for inventory creation
-		GroupName := "route.openshift.io"
-		GroupVersion := schema.GroupVersion{Group: GroupName, Version: "v1"}
-
 		scheme := runtime.NewScheme()
-		scheme.AddKnownTypes(GroupVersion,
-			&Route{},
-			&RouteList{},
-		)
-		meta.AddToGroupVersion(scheme, GroupVersion)
 		err = dbaasv1alpha1.AddToScheme(scheme)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -248,13 +240,28 @@ var _ = Describe("Rhoda e2e Test", func() {
 		//ctx, cancel = context.WithTimeout(ctx, 5*time.Second)
 		//defer cancel()
 
+		scheme := runtime.NewScheme()
+		routev1.Install(scheme)
+		err := dbaasv1alpha1.AddToScheme(scheme)
+		client, err := k8sClient.New(config, k8sClient.Options{Scheme: scheme})
+		Expect(err).NotTo(HaveOccurred())
+		route := routev1.Route{}
+		err = client.Get(context.Background(), k8sClient.ObjectKey{
+			Namespace: "openshift-console",
+			Name:      "console",
+		}, &route)
+		Expect(err).NotTo(HaveOccurred())
+		fmt.Println(route.Spec.Host)
+		domain := route.Spec.Host
+
 		var nodes []*cdp.Node
 		//selector for checking the Data Services button
 		selector := "#page-sidebar div ul li button"
-		url := "https://console-openshift-console.apps.rhoda-lab.51ty.p1.openshiftapps.com/dashboards"
+		url := fmt.Sprintf("https://%s/dashboards", domain)
+		//	url := "https://console-openshift-console.apps.rhoda-lab.51ty.p1.openshiftapps.com/dashboards"
 
 		if err := chromedp.Run(ctx,
-			SetCookie("openshift-session-token", config.BearerToken, "console-openshift-console.apps.rhoda-lab.51ty.p1.openshiftapps.com", "/", false, false),
+			SetCookie("openshift-session-token", config.BearerToken, domain, "/", false, false),
 			chromedp.Navigate(url),
 			chromedp.WaitVisible(`#page-sidebar`),
 			chromedp.Nodes(selector, &nodes),
@@ -291,9 +298,9 @@ var _ = Describe("Rhoda e2e Test", func() {
 						//	u := aNode.AttributeValue("href")
 						//	fmt.Printf("node: %s | href = %s\n", aNode.LocalName, u)
 						var textExists bool
-
+						href := aNode.AttributeValue("href")
 						if aNode.Children[0].NodeValue == "Database Access" {
-							u := "https://console-openshift-console.apps.rhoda-lab.51ty.p1.openshiftapps.com" + aNode.AttributeValue("href")
+							u := fmt.Sprintf("https://%s%s", domain, href)
 							fmt.Printf("node: %s | href = %s\n", aNode.LocalName, u)
 							_, err := chromedp.RunResponse(ctx,
 								chromedp.Navigate(u),
