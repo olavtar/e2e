@@ -15,6 +15,7 @@ import (
 	apiserver "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	meta "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -64,7 +65,15 @@ var _ = Describe("Rhoda e2e Test", func() {
 		}
 
 		//add dbaas scheme for inventory creation
+		GroupName := "route.openshift.io"
+		GroupVersion := schema.GroupVersion{Group: GroupName, Version: "v1"}
+
 		scheme := runtime.NewScheme()
+		scheme.AddKnownTypes(GroupVersion,
+			&Route{},
+			&RouteList{},
+		)
+		meta.AddToGroupVersion(scheme, GroupVersion)
 		err = dbaasv1alpha1.AddToScheme(scheme)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -160,7 +169,6 @@ var _ = Describe("Rhoda e2e Test", func() {
 				//fmt.Printf("Current Unix Time: %v\n", time.Now())
 
 				//Check inventories status
-				inventoryStatusReady := false
 				Eventually(func() bool {
 					inventoryStatusCheck := dbaasv1alpha1.DBaaSInventory{}
 					fmt.Println("Checking status for : " + provider.ProviderName)
@@ -172,7 +180,6 @@ var _ = Describe("Rhoda e2e Test", func() {
 					if len(inventoryStatusCheck.Status.Conditions) > 0 {
 						for _, inventStatus := range inventoryStatusCheck.Status.Conditions {
 							if inventStatus.Type == "SpecSynced" && inventStatus.Status == "True" {
-								inventoryStatusReady = true
 								return true
 							}
 						}
@@ -181,57 +188,53 @@ var _ = Describe("Rhoda e2e Test", func() {
 						fmt.Println("inventory.Status.Conditions Len is 0")
 						return false
 					}
-				}, 60*time.Second, 5*time.Second).Should(BeTrue())
+				}, 60*time.Second, 5*time.Second).Should(BeTrue(), "Inventory Status is not Ready for connection")
 
 				//test connection
-				if inventoryStatusReady == true {
-					fmt.Println(inventory.Name)
-
-					if len(inventory.Status.Instances) > 0 {
-						testDBaaSConnection := dbaasv1alpha1.DBaaSConnection{
-							TypeMeta: meta.TypeMeta{
-								Kind:       "DBaaSConnection",
-								APIVersion: "dbaas.redhat.com/v1alpha1",
-							},
-							ObjectMeta: meta.ObjectMeta{
-								Name:      inventory.Status.Instances[0].Name,
+				fmt.Println(inventory.Name)
+				if len(inventory.Status.Instances) > 0 {
+					testDBaaSConnection := dbaasv1alpha1.DBaaSConnection{
+						TypeMeta: meta.TypeMeta{
+							Kind:       "DBaaSConnection",
+							APIVersion: "dbaas.redhat.com/v1alpha1",
+						},
+						ObjectMeta: meta.ObjectMeta{
+							Name:      inventory.Status.Instances[0].Name,
+							Namespace: namespace,
+						},
+						Spec: dbaasv1alpha1.DBaaSConnectionSpec{
+							InventoryRef: dbaasv1alpha1.NamespacedName{
 								Namespace: namespace,
+								Name:      inventory.Name,
 							},
-							Spec: dbaasv1alpha1.DBaaSConnectionSpec{
-								InventoryRef: dbaasv1alpha1.NamespacedName{
-									Namespace: namespace,
-									Name:      inventory.Name,
-								},
-								InstanceID: inventory.Status.Instances[0].InstanceID,
-							},
-						}
-
-						Expect(client.Create(context.Background(), &testDBaaSConnection)).Should(Succeed())
-						By("checking DBaaSConnection status for: " + inventory.Status.Instances[0].Name)
-						Eventually(func() bool {
-							fmt.Println("checking DBaaSConnection status for: " + inventory.Status.Instances[0].Name)
-							err := client.Get(context.Background(), k8sClient.ObjectKey{
-								Namespace: namespace,
-								Name:      inventory.Status.Instances[0].Name,
-							}, &testDBaaSConnection)
-							Expect(err).NotTo(HaveOccurred())
-							if len(testDBaaSConnection.Status.Conditions) > 0 {
-								for _, connStatus := range testDBaaSConnection.Status.Conditions {
-									if connStatus.Type == "ReadyForBinding" && connStatus.Status == "True" {
-										return true
-									}
-								}
-								return false
-							} else {
-								fmt.Println("testDBaaSConnection.Status.Conditions Len is 0")
-								return false
-							}
-						}, 60*time.Second, 5*time.Second).Should(BeTrue())
-					} else {
-						fmt.Println("No instances to connect")
+							InstanceID: inventory.Status.Instances[0].InstanceID,
+						},
 					}
+					Expect(client.Create(context.Background(), &testDBaaSConnection)).Should(Succeed())
+
+					By("checking DBaaSConnection status for: " + inventory.Status.Instances[0].Name)
+					Eventually(func() bool {
+						dbaaSConnectionCheck := dbaasv1alpha1.DBaaSConnection{}
+						fmt.Println("checking DBaaSConnection status for: " + inventory.Status.Instances[0].Name)
+						err := client.Get(context.Background(), k8sClient.ObjectKey{
+							Namespace: namespace,
+							Name:      inventory.Status.Instances[0].Name,
+						}, &dbaaSConnectionCheck)
+						Expect(err).NotTo(HaveOccurred())
+						if len(dbaaSConnectionCheck.Status.Conditions) > 0 {
+							for _, connStatus := range dbaaSConnectionCheck.Status.Conditions {
+								if connStatus.Type == "ReadyForBinding" && connStatus.Status == "True" {
+									return true
+								}
+							}
+							return false
+						} else {
+							fmt.Println("dbaaSConnection.Status.Conditions Len is 0")
+							return false
+						}
+					}, 60*time.Second, 5*time.Second).Should(BeTrue())
 				} else {
-					Expect(inventoryStatusReady).Should(BeTrue(), "Inventory Status is not Ready for connection")
+					fmt.Println("No instances to connect")
 				}
 			})
 		}
@@ -249,20 +252,13 @@ var _ = Describe("Rhoda e2e Test", func() {
 		//selector for checking the Data Services button
 		selector := "#page-sidebar div ul li button"
 		url := "https://console-openshift-console.apps.rhoda-lab.51ty.p1.openshiftapps.com/dashboards"
-		// url:= "https://console-openshift-console.apps.rhoda-sp-prod.lue0.p1.openshiftapps.com/dashboards"
-		var data string
 
 		if err := chromedp.Run(ctx,
 			SetCookie("openshift-session-token", config.BearerToken, "console-openshift-console.apps.rhoda-lab.51ty.p1.openshiftapps.com", "/", false, false),
 			chromedp.Navigate(url),
 			chromedp.WaitVisible(`#page-sidebar`),
-			chromedp.OuterHTML("html", &data, chromedp.ByQuery),
-			//	chromedp.Nodes(`button`, &nodes, chromedp.ByQueryAll),
-
 			chromedp.Nodes(selector, &nodes),
-			//chromedp.Text(`button`, &selector, chromedp.NodeVisible, chromedp.ByQuery),
 		); err != nil {
-			//panic(err)
 			AbortSuite(err.Error())
 		}
 
@@ -351,6 +347,9 @@ func getConfig() *rest.Config {
 		// use the current context in kubeconfig
 		config, err = clientcmd.BuildConfigFromFlags("", *kubeconfig)
 		fmt.Println("Config:")
+		fmt.Println(config)
+		fmt.Println(config.Host)
+
 		token := config.BearerToken
 		fmt.Println(token)
 
