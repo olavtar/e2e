@@ -161,8 +161,8 @@ var _ = Describe("Rhoda e2e Test", func() {
 				//fmt.Printf("Current Unix Time: %v\n", time.Now())
 
 				//Check inventories status
+				inventoryStatusCheck := dbaasv1alpha1.DBaaSInventory{}
 				Eventually(func() bool {
-					inventoryStatusCheck := dbaasv1alpha1.DBaaSInventory{}
 					fmt.Println("Checking status for : " + provider.ProviderName)
 					err := client.Get(context.Background(), k8sClient.ObjectKey{
 						Namespace: namespace,
@@ -171,8 +171,8 @@ var _ = Describe("Rhoda e2e Test", func() {
 					Expect(err).NotTo(HaveOccurred())
 					if len(inventoryStatusCheck.Status.Conditions) > 0 {
 						for _, inventStatus := range inventoryStatusCheck.Status.Conditions {
-							if inventStatus.Type == "SpecSynced" && inventStatus.Status == "True" {
-								return true
+							if inventStatus.Type == "SpecSynced" {
+								return inventStatus.Status == "True"
 							}
 						}
 						return false
@@ -183,40 +183,40 @@ var _ = Describe("Rhoda e2e Test", func() {
 				}, 60*time.Second, 5*time.Second).Should(BeTrue(), "Inventory Status is not Ready for connection")
 
 				//test connection
-				fmt.Println(inventory.Name)
-				if len(inventory.Status.Instances) > 0 {
+				fmt.Println(inventoryStatusCheck.Name)
+				if len(inventoryStatusCheck.Status.Instances) > 0 {
 					testDBaaSConnection := dbaasv1alpha1.DBaaSConnection{
 						TypeMeta: meta.TypeMeta{
 							Kind:       "DBaaSConnection",
 							APIVersion: "dbaas.redhat.com/v1alpha1",
 						},
 						ObjectMeta: meta.ObjectMeta{
-							Name:      inventory.Status.Instances[0].Name,
+							Name:      inventoryStatusCheck.Status.Instances[0].Name,
 							Namespace: namespace,
 						},
 						Spec: dbaasv1alpha1.DBaaSConnectionSpec{
 							InventoryRef: dbaasv1alpha1.NamespacedName{
 								Namespace: namespace,
-								Name:      inventory.Name,
+								Name:      inventoryStatusCheck.Name,
 							},
-							InstanceID: inventory.Status.Instances[0].InstanceID,
+							InstanceID: inventoryStatusCheck.Status.Instances[0].InstanceID,
 						},
 					}
 					Expect(client.Create(context.Background(), &testDBaaSConnection)).Should(Succeed())
 
-					By("checking DBaaSConnection status for: " + inventory.Status.Instances[0].Name)
+					By("checking DBaaSConnection status for: " + inventoryStatusCheck.Status.Instances[0].Name)
 					Eventually(func() bool {
 						dbaaSConnectionCheck := dbaasv1alpha1.DBaaSConnection{}
-						fmt.Println("checking DBaaSConnection status for: " + inventory.Status.Instances[0].Name)
+						fmt.Println("checking DBaaSConnection status for: " + inventoryStatusCheck.Status.Instances[0].Name)
 						err := client.Get(context.Background(), k8sClient.ObjectKey{
 							Namespace: namespace,
-							Name:      inventory.Status.Instances[0].Name,
+							Name:      inventoryStatusCheck.Status.Instances[0].Name,
 						}, &dbaaSConnectionCheck)
 						Expect(err).NotTo(HaveOccurred())
 						if len(dbaaSConnectionCheck.Status.Conditions) > 0 {
 							for _, connStatus := range dbaaSConnectionCheck.Status.Conditions {
-								if connStatus.Type == "ReadyForBinding" && connStatus.Status == "True" {
-									return true
+								if connStatus.Type == "ReadyForBinding" {
+									return connStatus.Status == "True"
 								}
 							}
 							return false
@@ -240,9 +240,11 @@ var _ = Describe("Rhoda e2e Test", func() {
 		//ctx, cancel = context.WithTimeout(ctx, 5*time.Second)
 		//defer cancel()
 
+		//Adding route to the scheme to get the domain
 		scheme := runtime.NewScheme()
 		routev1.Install(scheme)
 		err := dbaasv1alpha1.AddToScheme(scheme)
+		Expect(err).NotTo(HaveOccurred())
 		client, err := k8sClient.New(config, k8sClient.Options{Scheme: scheme})
 		Expect(err).NotTo(HaveOccurred())
 		route := routev1.Route{}
@@ -254,70 +256,79 @@ var _ = Describe("Rhoda e2e Test", func() {
 		fmt.Println(route.Spec.Host)
 		domain := route.Spec.Host
 
-		var nodes []*cdp.Node
+		var nodesButtonList []*cdp.Node
 		//selector for checking the Data Services button
 		selector := "#page-sidebar div ul li button"
 		url := fmt.Sprintf("https://%s/dashboards", domain)
 		//	url := "https://console-openshift-console.apps.rhoda-lab.51ty.p1.openshiftapps.com/dashboards"
 
 		if err := chromedp.Run(ctx,
-			SetCookie("openshift-session-token", config.BearerToken, domain, "/", false, false),
+			SetOpenShiftCookie(config.BearerToken, domain),
 			chromedp.Navigate(url),
 			chromedp.WaitVisible(`#page-sidebar`),
-			chromedp.Nodes(selector, &nodes),
+			chromedp.Nodes(selector, &nodesButtonList),
 		); err != nil {
 			AbortSuite(err.Error())
 		}
 
-		for _, node := range nodes {
-			//NodeName is the button here, looping through buttons to get Data services
-			fmt.Println(node.NodeName)
+		selectorLi := "section ul li a"
+		var dataServiceNode []*cdp.Node
+		//Get Data Services button
+		dataServiceLi := getLi(nodesButtonList)
+		err = chromedp.Run(ctx,
+			chromedp.Nodes(selectorLi, &dataServiceNode, chromedp.ByQueryAll, chromedp.FromNode(dataServiceLi)),
+		)
+		Expect(err).NotTo(HaveOccurred())
 
-			for _, child := range node.Children {
-				//getting Data Services Button
-				fmt.Println(child.NodeValue)
-				if child.NodeValue == "Data Services" {
-					//get the parent's parent which is Li to click on the Database Access button
-					li := child.Parent.Parent
-					//fmt.Println(li)
-					//checkAdminDashboard(li, ctx)
-					var data string
-					selector := "section ul li a"
-					var result []*cdp.Node
-
-					err := chromedp.Run(ctx,
-						chromedp.Nodes(selector, &result, chromedp.ByQuery, chromedp.FromNode(li)),
-					)
-					Expect(err).NotTo(HaveOccurred())
-
-					//fmt.Println(result)
-					for _, aNode := range result {
-						//temp stuff for visibility
-						text := aNode.Children[0].NodeValue
-						fmt.Println(text)
-						//	u := aNode.AttributeValue("href")
-						//	fmt.Printf("node: %s | href = %s\n", aNode.LocalName, u)
-						var textExists bool
-						href := aNode.AttributeValue("href")
-						if aNode.Children[0].NodeValue == "Database Access" {
-							u := fmt.Sprintf("https://%s%s", domain, href)
-							fmt.Printf("node: %s | href = %s\n", aNode.LocalName, u)
-							_, err := chromedp.RunResponse(ctx,
-								chromedp.Navigate(u),
-								chromedp.WaitVisible(`#content-scrollable button`),
-								chromedp.OuterHTML("html", &data, chromedp.ByQuery),
-								chromedp.EvaluateAsDevTools(`document.querySelector("#content-scrollable h1 div" ).innerHTML.includes("Database Access")`, &textExists),
-							)
-							Expect(err).NotTo(HaveOccurred())
-							fmt.Println(textExists)
-							Expect(textExists).Should(BeTrue())
-						}
-					}
-				}
-			}
+		href := getHref(dataServiceNode)
+		fmt.Println(href)
+		u := fmt.Sprintf("https://%s%s", domain, href)
+		fmt.Printf(u)
+		dataAccessSelector := "#content-scrollable h1 div span"
+		var dataAccessNodes []*cdp.Node
+		err = chromedp.Run(ctx,
+			chromedp.Navigate(u),
+			chromedp.WaitVisible(`#content-scrollable button`),
+			chromedp.Nodes(dataAccessSelector, &dataAccessNodes, chromedp.ByQuery),
+			//chromedp.EvaluateAsDevTools(`document.querySelector("#content-scrollable h1 div" ).innerHTML.includes("Database Access")`, &textExists),
+		)
+		Expect(err).NotTo(HaveOccurred())
+		for _, daNode := range dataAccessNodes {
+			//look under h1/div that the text is equal to "Database Access", means the page loaded, otherwise page loaded with errors.
+			text := daNode.Parent.Children[0].NodeValue
+			fmt.Println(text)
+			Expect(text).Should(Equal("Database Access"))
 		}
 	})
 })
+
+func getHref(dataServiceNode []*cdp.Node) string {
+	for _, aNode := range dataServiceNode {
+		text := aNode.Children[0].NodeValue
+		fmt.Println(text)
+		if aNode.Children[0].NodeValue == "Database Access" {
+			return aNode.AttributeValue("href")
+		}
+	}
+	return ""
+}
+
+func getLi(nodesButtonList []*cdp.Node) *cdp.Node {
+	for _, node := range nodesButtonList {
+		//NodeName is the button here, looping through buttons to get Data services
+		fmt.Println(node.NodeName)
+
+		for _, child := range node.Children {
+			//getting Data Services Button
+			fmt.Println(child.NodeValue)
+			if child.NodeValue == "Data Services" {
+				//get the parent's parent which is Li to click on the Database Access button
+				return child.Parent.Parent
+			}
+		}
+	}
+	return nil
+}
 
 func getProvidersData(providerNames []string, ciSecretData map[string][]byte) []rhoda.ProviderAccount {
 	var providers []rhoda.ProviderAccount
@@ -369,18 +380,18 @@ func getConfig() *rest.Config {
 	return config
 }
 
-func SetCookie(name, value, domain, path string, httpOnly, secure bool) chromedp.Action {
+func SetOpenShiftCookie(value, domain string) chromedp.Action {
 	return chromedp.ActionFunc(func(ctx context.Context) error {
 		expr := cdp.TimeSinceEpoch(time.Now().Add(180 * 24 * time.Hour))
-		success := network.SetCookie(name, value).
+		success := network.SetCookie("openshift-session-token", value).
 			WithExpires(&expr).
 			WithDomain(domain).
-			WithPath(path).
-			WithHTTPOnly(httpOnly).
-			WithSecure(secure).
+			WithPath("/").
+			WithHTTPOnly(false).
+			WithSecure(false).
 			Do(ctx)
 		if success != nil {
-			return fmt.Errorf("could not set cookie %s", name)
+			return fmt.Errorf("could not set cookie openshift-session-token")
 		}
 		return nil
 	})
