@@ -297,7 +297,7 @@ var _ = Describe("Rhoda e2e Test", func() {
 			//look under h1/div that the text is equal to "Database Access", means the page loaded, otherwise page loaded with errors.
 			text := daNode.Parent.Children[0].NodeValue
 			fmt.Println(text)
-			Expect(text).Should(Equal("Database Access"))
+			Expect(strings.TrimSpace(text)).Should(Equal("Database Access"))
 		}
 	})
 })
